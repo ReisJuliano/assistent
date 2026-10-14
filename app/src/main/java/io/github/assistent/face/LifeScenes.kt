@@ -813,7 +813,7 @@ internal fun DrawScope.drawSceneProps(
             }
         }
 
-        Scene.DOG_PAT -> puppy(Offset(g.cx + u * 0.6f, g.mouthY + u * 0.22f), u, t, ::stroke, ::fill)
+        Scene.DOG_PAT -> puppy(Offset(g.cx + u * 0.74f, g.mouthY + u * 0.16f), u, t, ::stroke, ::fill)
 
         Scene.STRETCH_BREAK -> if (t < 4.5f) {
             for (side in intArrayOf(-1, 1)) {
@@ -1026,7 +1026,7 @@ private fun DrawScope.notebook(c: Offset, u: Float, t: Float, stroke: Pen) {
 
 /** Round kitten held against the chest: ears, closed happy eyes, whiskers, paws over the arms, swishing tail. */
 private fun DrawScope.kitten(c: Offset, u: Float, t: Float, stroke: Pen, fill: Fill) {
-    val r = u * 0.07f
+    val r = u * 0.085f
     val head = Path().apply { addOval(Rect(c, r)) }
     fill(head, 0.15f); stroke(head, u * 0.01f, 1f)
     for (side in intArrayOf(-1, 1)) {
@@ -1054,7 +1054,7 @@ private fun DrawScope.kitten(c: Offset, u: Float, t: Float, stroke: Pen, fill: F
 
 /** Puppy sitting beside the robot, tongue out, tail wagging. */
 private fun DrawScope.puppy(c: Offset, u: Float, t: Float, stroke: Pen, fill: Fill) {
-    val s = u * 0.06f
+    val s = u * 0.1f
     val body = Path().apply { addOval(Rect(Offset(c.x - s * 0.8f, c.y - s * 0.4f), Size(s * 1.6f, s * 1.5f))) }
     fill(body, 0.12f); stroke(body, u * 0.01f, 1f)
     val head = Offset(c.x - s * 0.15f, c.y - s * 0.95f)
