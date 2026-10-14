@@ -200,6 +200,7 @@ class Brain(
             appendLine("Always reply in ${locale.getDisplayLanguage(Locale.ENGLISH)} (${p.language}).")
             appendLine("Tone of voice: ${toneFor(p)}")
             humorInstruction(selectedTones(p), p.jokes)?.let { appendLine(it) }
+            if (p.kidsMode) appendLine("You are talking with CHILDREN: short simple words, warm and patient, nothing scary, violent or adult; explain like to a 7-year-old.")
             appendLine(
                 "Your replies are SPOKEN aloud. Length: " + when (p.verbosity) {
                     "detailed" -> "complete and informative, a few short paragraphs when useful."

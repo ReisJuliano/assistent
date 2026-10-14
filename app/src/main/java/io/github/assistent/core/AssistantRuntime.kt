@@ -436,8 +436,12 @@ class AssistantRuntime(
             stopEverything()
             return
         }
+        // A game is on: the answer goes to the game, not to the LLM.
+        if (games?.active == true) { playGame(firstAnswer = text); return }
         while (text.isNotBlank()) {
             chat(text, speak = true)
+            // start_game was called: the robot takes over right after its short reply.
+            if (games?.pending != null) { playGame(); return }
             if (interruptedThisTurn) {
                 interruptedThisTurn = false
                 // "para", "chega"…: just be quiet, don't start listening.
@@ -518,6 +522,40 @@ class AssistantRuntime(
 
     /** Set by the app graph: music is playing in the room (no hands-free follow-up then). */
     var isMusicPlaying: () -> Boolean = { false }
+
+    /** Set by the app graph: voice games (the robot runs them itself while one is on). */
+    var games: io.github.assistent.games.GameMaster? = null
+
+    /**
+     * Plays the pending/active game until it ends: the robot speaks each turn (options in the bubble) and listens for
+     * the answer without needing the wake phrase. Twice silent → game over.
+     */
+    suspend fun playGame(firstAnswer: String? = null) {
+        val gm = games ?: return
+        gm.pending?.let { (game, topic) -> speakTurn(gm.begin(game, topic)) }
+        var answer = firstAnswer
+        var silent = 0
+        while (gm.active && state.value.activity != Activity.SLEEPING) {
+            gm.prompt { say(it, Emotion.HAPPY) }
+            val text = answer ?: listen(10_000)
+            answer = null
+            if (text.isBlank()) {
+                if (++silent >= 2) { speakTurn(gm.timeout()); break }
+                say("Tô esperando sua resposta!", Emotion.THINKING)
+                continue
+            }
+            silent = 0
+            val turn = gm.handle(text) ?: break
+            speakTurn(turn)
+        }
+        if (state.value.activity == Activity.LISTENING) setActivity(Activity.IDLE)
+    }
+
+    private suspend fun speakTurn(t: io.github.assistent.games.GameTurn) {
+        if (t.show.isNotBlank()) showBubble(t.show, speak = false, emotion = t.emotion)
+        else setEmotion(t.emotion, 3_000)
+        say(t.say, t.emotion)
+    }
 
     /** Set by the app graph: personalised reminder lines. */
     var reminderPhrases: ReminderPhrases? = null

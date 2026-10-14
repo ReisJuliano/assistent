@@ -585,6 +585,33 @@ class LocalApiServer(private val g: AppGraph) {
                         }
                     })
                 })
+                // Voice games: {"game":"quiz|numero|pedra_papel_tesoura|verdade_ou_mentira","topic":"..."}; scores per person.
+                post("/games/start", guard {
+                    val b = AppJson.parseToJsonElement(call.receiveText()) as JsonObject
+                    val game = (b["game"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "quiz"
+                    val topic = (b["topic"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                    val voice = (b["voice"] as? kotlinx.serialization.json.JsonPrimitive)?.content != "false"
+                    if (voice) {
+                        g.games.request(game.replace('_', ' '), topic)
+                        g.scope.launch { g.runtime.wake(greet = false); g.runtime.playGame() }
+                        call.respond(ok())
+                    } else {
+                        // Driven by /games/answer (tests, companion app): no speaking, no listening.
+                        val t = g.games.begin(game.replace('_', ' '), topic)
+                        call.respond(buildJsonObject { put("say", t.say); put("show", t.show); put("done", t.done) })
+                    }
+                })
+                post("/games/answer", guard {
+                    val text = (AppJson.parseToJsonElement(call.receiveText()) as JsonObject)["text"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }.orEmpty()
+                    val turn = g.games.handle(text)
+                    call.respond(buildJsonObject { put("say", turn?.say ?: "nenhum jogo ativo"); put("done", turn?.done ?: true); put("show", turn?.show.orEmpty()) })
+                })
+                get("/games", guard {
+                    call.respond(buildJsonObject {
+                        put("active", g.games.session?.name ?: "")
+                        put("scores", AppJson.encodeToJsonElement(g.quizzes.all()))
+                    })
+                })
                 // What the robot is doing right now (tool calls with their real state) and cancel-all ("parar").
                 get("/operations", guard { call.respond(g.operations.list.value) })
                 post("/operations/cancel", guard { call.respond(buildJsonObject { put("cancelled", g.operations.cancelAll()) }) })

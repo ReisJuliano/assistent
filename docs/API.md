@@ -186,6 +186,9 @@ Eventos: `wake`, `sleep`, `user_said`, `reply`, `reminder`, `emotion`, `face_see
 | POST | `/chatgpt/signout` | | Desconecta a conta ChatGPT deste aparelho |
 | POST | `/vision/hands` | imagem (JPEG/PNG) | Gesto da mão na imagem (MediaPipe): `Thumb_Up 0.73 palm=(x,y)` |
 | POST | `/vision/detect` | imagem (JPEG/PNG) no corpo | Objetos/pessoas/bichos que ele vê: `[{"label":"cat","score":0.7,"box":"x1,y1,x2,y2"}]` |
+| POST | `/games/start` | `{"game":"quiz|numero|pedra_papel_tesoura|verdade_ou_mentira","topic":"planetas"}` | Começa um jogo por voz (com `"voice":"false"` é conduzido pela API) |
+| POST | `/games/answer` | `{"text":"letra b"}` | Resposta do jogador (modo API) |
+| GET | `/games` | | Jogo ativo e placares por pessoa |
 | GET | `/operations` | | O que ele está fazendo agora: ferramentas em execução e recém-terminadas, com estado real |
 | POST | `/operations/cancel` | | Cancela todas as operações em andamento ("parar") |
 | POST | `/wake/selftest` | `{"text":"ei parafuso, que horas são"}` ou WAV | Roda o detector da palavra de ativação no áudio (voz do sistema): detectou?, confiança, pedido extraído, tempos |

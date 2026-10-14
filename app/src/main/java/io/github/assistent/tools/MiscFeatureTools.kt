@@ -15,6 +15,7 @@ class SleepReportTool(private val sleep: SleepTracker) : Tool {
     override suspend fun execute(args: JsonObject): String = sleep.report(args.num("days")?.toInt() ?: 7)
 }
 
+@Deprecated("start_game runs the whole quiz")
 class StartQuizTool(
     private val llm: LlmClient,
     private val config: ConfigStore,
@@ -45,5 +46,22 @@ class RecordQuizScoreTool(private val quiz: QuizRepository, private val presence
     override suspend fun execute(args: JsonObject): String {
         val score = quiz.record(presence.currentPerson.value?.id, args.str("topic") ?: "", args.bool("correct") == true)
         return "score ${score.correct}/${score.total}"
+    }
+}
+
+class StartGameTool(private val games: io.github.assistent.games.GameMaster) : Tool {
+    override val name = "start_game"
+    override val description = "Start a voice game that the robot runs itself: quiz (topic), numero (guess the number), " +
+        "pedra_papel_tesoura (rock-paper-scissors, the player can show the hand to the camera), verdade_ou_mentira (topic). " +
+        "After calling it, reply with ONE short excited sentence only; do not ask the game's questions yourself."
+    override val parameters = params {
+        string("game", "Which game", enum = listOf("quiz", "numero", "pedra_papel_tesoura", "verdade_ou_mentira"))
+        string("topic", "Topic for quiz / true-or-false", required = false)
+    }
+
+    override suspend fun execute(args: JsonObject): String {
+        val game = args.str("game") ?: "quiz"
+        games.request(game.replace('_', ' '), args.str("topic").orEmpty())
+        return "game '$game' will start right after your short reply"
     }
 }

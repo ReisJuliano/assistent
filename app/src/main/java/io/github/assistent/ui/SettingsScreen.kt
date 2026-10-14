@@ -419,6 +419,9 @@ private fun SettingsList(
                         if ("custom" in io.github.assistent.brain.Brain.selectedTones(cfg.personality)) {
                             Field("Descreva o tom (ex.: fala como um pirata)", cfg.personality.customTone, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(customTone = v)) } }
                         }
+                        SwitchRow("Modo criança", "Palavras simples, conteúdo leve e jogos mais fáceis", cfg.personality.kidsMode) { v ->
+                            up { it.copy(personality = it.personality.copy(kidsMode = v)) }
+                        }
                         Label("Piadinhas sobre o assunto")
                         Segmented(listOf("auto" to "Auto", "always" to "Sempre", "never" to "Nunca"), cfg.personality.jokes) { v ->
                             up { it.copy(personality = it.personality.copy(jokes = v)) }

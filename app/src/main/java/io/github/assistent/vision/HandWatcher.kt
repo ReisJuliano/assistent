@@ -74,6 +74,8 @@ class HandWatcher(
     @Volatile private var failed = false
     @Volatile private var busy = false
     private var lastGesture = ""
+    /** Latest gesture of any kind (also Open_Palm / Closed_Fist) and when: games read it (rock-paper-scissors). */
+    @Volatile var lastSeen: Pair<String, Long> = "" to 0L
     private var lastGestureAt = 0L
 
     /** Upright frame (any size; it is not mirrored). Drops frames while the previous one is still running. */
@@ -86,6 +88,7 @@ class HandWatcher(
             val hand = result.landmarks().firstOrNull()
             val gesture = result.gestures().firstOrNull()?.firstOrNull()
             val name = gesture?.takeIf { it.score() >= 0.55f }?.categoryName().orEmpty()
+            if (name.isNotBlank() && name != "None") lastSeen = name to now
             val sample = hand?.let { lm ->
                 // Palm centre ≈ mean of wrist and the finger bases; mirror x so it matches what the person sees.
                 val pts = listOf(0, 5, 9, 13, 17).map { lm[it] }

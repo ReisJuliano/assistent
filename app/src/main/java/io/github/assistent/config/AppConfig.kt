@@ -103,6 +103,8 @@ data class PersonalityConfig(
      * descontraido/sarcastico/dramatico/alegre tones), "always" or "never".
      */
     val jokes: String = "auto",
+    /** Talking with children: simple words, gentle content, easier games. */
+    val kidsMode: Boolean = false,
     /** Max memories injected in the system prompt each turn. */
     val memoriesInPrompt: Int = 15,
 )

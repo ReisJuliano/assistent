@@ -302,6 +302,15 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
 - The brain only overrides a reply with "não consegui concluir" when an *action* tool's last attempt failed;
   read-only tools (search, read page, weather…) failing is normal and doesn't discard a good answer.
 
+### Games (`games/GameMaster.kt`)
+
+Voice games the robot runs itself (no LLM round-trip per answer): quiz and true-or-false (questions written by the LLM
+in one batch, answers by letter or by the option's words), guess the number (spoken numbers "quarenta e dois"),
+rock-paper-scissors (the hand on camera via `HandWatcher.lastSeen`: fist/palm/victory, or the spoken word), best of
+three. `start_game` only *requests* the game; `runtime.playGame()` takes over after the short reply and listens without
+the wake phrase; "parar/chega" ends it; two silences end it. Scores per person (`QuizRepository`). `personality.kidsMode`
+simplifies words and questions. API: `POST /games/start` (`"voice":"false"` = driven by `/games/answer`), `GET /games`.
+
 ### Tools
 
 Implement `Tool` (`name`, `description`, JSON-schema `parameters` via `params { … }`, `activity` for the face while

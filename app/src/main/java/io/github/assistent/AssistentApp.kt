@@ -153,7 +153,7 @@ class AppGraph(context: Context) {
             SpotifySimpleTool("music_volume", "Set Spotify playback volume.", "PUT", "me/player/volume", http, config, hasVolume = true),
             SpotifySimpleTool("music_now_playing", "Get the current Spotify track.", "GET", "me/player/currently-playing", http, config),
             SleepReportTool(sleep),
-            StartQuizTool(llm, config),
+
             RecordQuizScoreTool(quizzes, presence),
             deviceTool,
             TvControlTool(context, config),
@@ -233,6 +233,12 @@ class AppGraph(context: Context) {
     }
     /** Hands on camera: waves and gestures (MediaPipe). */
     val hands = io.github.assistent.vision.HandWatcher(context, config, http, scope)
+
+    /** Voice games run by the robot (quiz, guess the number, rock-paper-scissors with the hand, true or false). */
+    val games = io.github.assistent.games.GameMaster(llm, config, quizzes, presence) { hands.lastSeen }.also {
+        runtime.games = it
+        tools.register(io.github.assistent.tools.StartGameTool(it))
+    }
 
     /** Bodies, objects and outfits of the day on camera. */
     val body = io.github.assistent.vision.BodyWatcher(context, config, http, scope)
