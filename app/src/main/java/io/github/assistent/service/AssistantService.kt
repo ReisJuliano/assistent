@@ -43,7 +43,9 @@ class AssistantService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         ReminderScheduler.createChannels(this)
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT), PendingIntent.FLAG_IMMUTABLE,
+        )
         val stop = PendingIntent.getService(
             this, 1, Intent(this, AssistantService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
         )
@@ -137,6 +139,7 @@ class AssistantService : LifecycleService() {
         var wasSleeping = false
         return graph.wakeWord.awaitWake(
             onAttention = {
+                bringFaceToFront()
                 wasSleeping = runtime.state.value.activity == Activity.SLEEPING
                 runtime.onWakePhraseHeard()
                 runtime.setActivity(Activity.LISTENING)
@@ -148,6 +151,14 @@ class AssistantService : LifecycleService() {
             strict = { runtime.state.value.activity == Activity.SLEEPING },
             music = { graph.interactions.musicPlaying },
         )
+    }
+
+    /** If another app is on screen (e.g. it opened YouTube here), calling it brings the face back. */
+    private fun bringFaceToFront() {
+        if (MainActivity.visible) return
+        runCatching {
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }.onFailure { Log.w(TAG, "can't bring the face back (allow 'display over other apps')", it) }
     }
 
     companion object {

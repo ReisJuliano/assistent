@@ -294,7 +294,7 @@ class TvControlTool(
         val tvs = config.current.lanDevices.filter { it.kind == "tv" }
         return when {
             requested.isNotBlank() -> "TV '$requested' não cadastrada"
-            tvs.isEmpty() -> "nenhuma TV cadastrada (use device discover_devices ou cadastre em Configurações → Casa)"
+            tvs.isEmpty() -> "FALHOU: nenhuma TV cadastrada. NÃO abra no celular do robô: ofereça procurar a TV na rede (device discover_devices) ou cadastrar em Configurações → Casa → TVs e computadores"
             else -> "há ${tvs.size} TVs (${tvs.joinToString { it.name }}): pergunte qual"
         }
     }

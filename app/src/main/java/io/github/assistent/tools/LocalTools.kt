@@ -159,7 +159,10 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
     /** Set by the app graph: full network scan and verified Wake-on-LAN. */
     var home: HomeDevices? = null
     override val name = "device"
-    override val description = "Control this phone and configured LAN devices: flashlight, volume, apps, battery, or Wake-on-LAN for a PC/TV."
+    override val description = "Control THIS robot phone (the one showing your face): flashlight, its own volume, battery, " +
+        "discover devices on the network, Wake-on-LAN for a PC/TV. open_app/open_url open on THIS phone and hide your face: use " +
+        "them ONLY when the person explicitly asks to open something here on the robot/phone. Anything for the TV (videos, " +
+        "YouTube, Netflix, apps on the TV) must use tv_control; if no TV is configured, say so and offer to scan the network."
     override val parameters = params {
         string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "discover_devices", "wake_lan", "lan_status"))
         string("value", "Volume 0-100, URL, app name, or configured LAN device name", required = false)

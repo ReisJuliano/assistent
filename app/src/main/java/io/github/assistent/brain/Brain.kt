@@ -160,7 +160,7 @@ class Brain(
         val (emotion, parsedText) = parseEmotion(final?.content.orEmpty())
         val asksReminder = userText.lowercase().let { it.contains("lembrete") || it.contains("me lembre") || it.contains("alarme") }
         val actionFailed = actionOutcome.values.any { !it }
-        val text = if (actionFailed) {
+        val text = if (actionFailed && !admitsFailure(parsedText)) {
             "N\u00e3o consegui concluir essa a\u00e7\u00e3o. N\u00e3o vou fingir que ela foi realizada."
         } else if (asksReminder && "create_reminder" !in used) {
             "Não consegui criar o lembrete. Não vou fingir que ele foi agendado."
@@ -243,6 +243,13 @@ class Brain(
             "fofo" to "super sweet and cute, affectionate, enthusiastic like a small pet robot.",
             "dramatico" to "theatrical and over-dramatic, treats everything like an epic event, for comedy.",
         )
+
+        /** The model's own reply already says it didn't work (then its explanation is kept instead of a generic line). */
+        fun admitsFailure(text: String): Boolean {
+            val t = text.lowercase()
+            return listOf("não consegui", "nao consegui", "não deu", "não foi possível", "não encontrei", "não achei", "nenhuma", "nenhum",
+                "não está cadastrad", "não tem", "não há", "falhou", "sem confirmação", "não confirm", "ainda não").any { it in t }
+        }
 
         /** Tools that only read/look things up: their failures are normal (a page 403s, another one is read). */
         private val READ_ONLY_TOOLS = setOf(
