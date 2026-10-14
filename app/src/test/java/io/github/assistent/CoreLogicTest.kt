@@ -4,6 +4,7 @@ import io.github.assistent.brain.Brain
 import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.Emotion
 import io.github.assistent.voice.WakeWordEngine
+import io.github.assistent.tools.WakeOnLan
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -36,6 +37,20 @@ class CoreLogicTest {
     @Test fun calibrationExtractsOnlyTheSpokenName() {
         assertEquals("Oswaldo", WakeWordEngine.nameCandidate("ei Oswaldo"))
         assertEquals("Rubia", WakeWordEngine.nameCandidate("Rubia"))
+    }
+
+    @Test fun wakeOnLanBuildsAValidMagicPacket() {
+        val mac = WakeOnLan.parseMac("AA:bb:01:02:03:04")!!
+        val packet = WakeOnLan.magicPacket(mac)
+        assertEquals(102, packet.size)
+        assertEquals(0xFF, packet[0].toInt() and 0xFF)
+        assertEquals(0xAA, packet[6].toInt() and 0xFF)
+        assertEquals(0x04, packet.last().toInt() and 0xFF)
+    }
+
+    @Test fun wakeOnLanRejectsMalformedMac() {
+        assertNull(WakeOnLan.parseMac("AA:BB:CC"))
+        assertNull(WakeOnLan.parseMac("GG:BB:CC:DD:EE:FF"))
     }
 
     @Test fun emotionTagIsParsedAndStripped() {

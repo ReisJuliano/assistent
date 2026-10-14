@@ -789,6 +789,8 @@ private fun LanDevicesSection(cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> 
     var name by remember { mutableStateOf("") }
     var mac by remember { mutableStateOf("") }
     var broadcast by remember { mutableStateOf("255.255.255.255") }
+    var host by remember { mutableStateOf("") }
+    var checkPort by remember { mutableStateOf("") }
     Section("Dispositivos da rede") {
         Hint("Cadastre PCs ou TVs compatíveis com Wake-on-LAN. Depois diga: “acorde o PC do escritório”.")
         cfg.lanDevices.forEach { device ->
@@ -806,11 +808,13 @@ private fun LanDevicesSection(cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> 
             Field("Nome", name) { name = it }
             Field("MAC (ex. AA:BB:CC:DD:EE:FF)", mac) { mac = it }
             Field("Broadcast", broadcast) { broadcast = it }
+            Field("IP/host para verificar (opcional)", host) { host = it }
+            Field("Porta TCP para verificar (opcional)", checkPort, keyboard = KeyboardType.Number) { checkPort = it.filter(Char::isDigit) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = name.isNotBlank() && mac.isNotBlank(), onClick = {
                     val id = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_")
-                    up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == id } + io.github.assistent.config.LanDeviceConfig(id, name.trim(), mac.trim(), broadcast.trim())) }
-                    name = ""; mac = ""; broadcast = "255.255.255.255"; adding = false
+                    up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == id } + io.github.assistent.config.LanDeviceConfig(id = id, name = name.trim(), mac = mac.trim(), broadcast = broadcast.trim(), host = host.trim(), checkPort = checkPort.toIntOrNull() ?: 0)) }
+                    name = ""; mac = ""; broadcast = "255.255.255.255"; host = ""; checkPort = ""; adding = false
                 }) { Text("Salvar") }
                 TextButton(onClick = { adding = false }) { Text("Cancelar") }
             }

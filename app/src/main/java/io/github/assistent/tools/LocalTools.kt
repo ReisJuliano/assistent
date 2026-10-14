@@ -11,13 +11,15 @@ import io.github.assistent.core.PresenceTracker
 import io.github.assistent.data.MemoryRepository
 import io.github.assistent.reminders.ReminderScheduler
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 
 // ---------------------------------------------------------------- memory
 
@@ -156,7 +158,7 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
     override val name = "device"
     override val description = "Control this phone and configured LAN devices: flashlight, volume, apps, battery, or Wake-on-LAN for a PC/TV."
     override val parameters = params {
-        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "wake_lan"))
+        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "wake_lan", "lan_status"))
         string("value", "Volume 0-100, URL, app name, or configured LAN device name", required = false)
     }
 
@@ -179,27 +181,36 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
                 "battery ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%, charging=${bm.isCharging}"
             }
             "wake_lan" -> wakeLan(value)
+            "lan_status" -> lanStatus(value)
             else -> "unknown action"
         }
     }
 
-    private fun wakeLan(value: String): String {
+    private suspend fun wakeLan(value: String): String = withContext(Dispatchers.IO) {
         val devices = config.current.lanDevices
         val device = devices.firstOrNull { it.name.equals(value, true) || it.id.equals(value, true) }
-            ?: return "LAN device '$value' is not configured"
-        val mac = device.mac.split(':', '-', ' ').filter(String::isNotBlank).mapNotNull { it.toIntOrNull(16) }
-        if (mac.size != 6) return "invalid MAC for ${device.name}"
-        val packet = ByteArray(102)
-        java.util.Arrays.fill(packet, 0, 6, 0xFF.toByte())
-        val macBytes = mac.map { it.toByte() }.toByteArray()
-        for (i in 0 until 16) System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6)
-        return runCatching {
-            DatagramSocket().use { socket ->
-                socket.broadcast = true
-                socket.send(DatagramPacket(packet, packet.size, InetAddress.getByName(device.broadcast), device.port.coerceIn(1, 65535)))
-            }
-            "wake-on-LAN sent to ${device.name}"
+            ?: return@withContext "LAN device '$value' is not configured"
+        val mac = WakeOnLan.parseMac(device.mac) ?: return@withContext "invalid MAC for ${device.name}"
+        runCatching {
+            WakeOnLan.send(mac, device.broadcast, device.port)
+            val status = if (device.host.isBlank()) "status unknown; configure its IP/host to verify" else checkReachability(device.host, device.checkPort)
+            "wake-on-LAN sent to ${device.name}; $status"
         }.getOrElse { "wake-on-LAN failed for ${device.name}: ${it.message}" }
+    }
+
+    private suspend fun lanStatus(value: String): String = withContext(Dispatchers.IO) {
+        val device = config.current.lanDevices.firstOrNull { it.name.equals(value, true) || it.id.equals(value, true) }
+            ?: return@withContext "LAN device '$value' is not configured"
+        if (device.host.isBlank()) return@withContext "status unavailable for ${device.name}; configure its IP/host"
+        "${device.name}: ${checkReachability(device.host, device.checkPort)}"
+    }
+
+    private fun checkReachability(host: String, port: Int): String {
+        val online = runCatching {
+            if (port > 0) Socket().use { it.connect(InetSocketAddress(host, port), 1_200); true }
+            else InetAddress.getByName(host).isReachable(1_200)
+        }.getOrDefault(false)
+        return if (online) "online" else "offline or still booting"
     }
 
     private fun torch(on: Boolean): String {
