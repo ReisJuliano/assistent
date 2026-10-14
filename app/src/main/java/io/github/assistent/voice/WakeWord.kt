@@ -135,9 +135,21 @@ class WakeWordEngine(
             val m = ensureModel()
             val phrases = phraseVariants()
             val threshold = config.current.wake.sensitivity.coerceIn(0.4f, 0.98f)
-            val rec = Recognizer(m, 16000f)
-            // Do not restrict decoding to a Vosk grammar while sleeping. Grammars can silently reject a custom
-            // name that is absent from the model vocabulary. Matching stays constrained to configured phrases.
+            // Phrases whose every word exists in the model vocabulary are detected with a grammar recognizer:
+            // it can only output those phrases or [unk], with per-word confidence. Far more reliable than fuzzy
+            // matching free text. Phrases with unknown words (a made-up name) fall back to fuzzy matching.
+            val spoken = rawPhraseVariants()
+            val known = spoken.filter { p -> p.all { knows(m, it) } }
+            val grammarRec = known.takeIf { it.isNotEmpty() }?.let { list ->
+                val json = grammarJson(m, list)
+                runCatching { Recognizer(m, 16000f, json).apply { setWords(true) } }
+                    .onFailure { Log.w(TAG, "grammar recognizer failed", it) }.getOrNull()
+            }
+            val knownNormalized = known.map { p -> p.flatMap { words(it) } }
+            Log.i(TAG, "wake phrases: grammar=${known.map { it.joinToString(" ") }} fuzzyOnly=${(spoken - known.toSet()).map { it.joinToString(" ") }}")
+            val rec = Recognizer(m, 16000f).apply { setWords(true); setPartialWords(true) }
+            val recentFree = ArrayDeque<TimedWord>()
+            fun freeWordsNow(): List<TimedWord> = recentFree.toList() + timedWords(rec.partialResult)
             val minBuf = android.media.AudioRecord.getMinBufferSize(16000, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
             val mic = android.media.AudioRecord(
                 android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
@@ -148,6 +160,14 @@ class WakeWordEngine(
             var attentionAt = 0L
             var noiseFloor = 0.01f
             var voiceTail = 0
+
+            /** Text said after the wake phrase in the same breath, from the free recognizer (by word timing). */
+            fun remainderFromFree(nameEnd: Float? = null): String {
+                val result = rec.finalResult
+                if (nameEnd != null && nameEnd > 0f) return wordsAfter(result, nameEnd).trim()
+                return match(field(result, "text"), phrases, 0.5f) ?: ""
+            }
+
             try {
                 mic.startRecording()
                 while (true) {
@@ -157,7 +177,8 @@ class WakeWordEngine(
                     // Safety handoff: a partial wake hit must never leave the wake detector
                     // holding the microphone forever if Vosk does not emit an endpoint.
                     if (attention && System.currentTimeMillis() - attentionAt > 1_800L) {
-                        return@withContext ""
+                        lastWakeAudio = snapshot(2.5f)
+                        return@withContext remainderFromFree()
                     }
                     var sum = 0.0
                     for (k in 0 until n) {
@@ -182,15 +203,47 @@ class WakeWordEngine(
                     if (rms > maxOf(0.006f, noiseFloor * 2.5f)) voiceTail = 20 // ~1 s
                     if (voiceTail <= 0) continue
                     voiceTail--
-                    val r = rec
-                    if (r.acceptWaveForm(buf, n)) {
-                        val heard = field(r.result, "text")
+
+                    val freeDone = rec.acceptWaveForm(buf, n)
+                    if (grammarRec != null) {
+                        if (grammarRec.acceptWaveForm(buf, n)) {
+                            val hit = grammarHit(grammarRec.result, knownNormalized)
+                            val call = hit != null && isCall(hit, freeWordsNow())
+                            // Music: lyrics can resemble the name, so demand a very confident decode.
+                            val need = when { music() -> 0.9f; strict() -> 0.8f; else -> (1.6f - threshold).coerceIn(0.55f, 0.85f) }
+                            if (hit != null) Log.d(TAG, "grammar heard '${hit.phrase}' conf=${"%.2f".format(hit.confidence)} call=$call need=$need")
+                            if (hit != null && call && hit.confidence >= need) {
+                                if (!attention) onAttention()
+                                lastWakeAudio = snapshot(3f)
+                                return@withContext remainderFromFree(hit.endSec)
+                            }
+                            if (attention) { attention = false; onDismiss() }
+                        } else if (!attention && !music()) {
+                            // React on the face as soon as the partial result contains the phrase.
+                            val partial = words(field(grammarRec.partialResult, "partial").replace("[unk]", " "))
+                            if (knownNormalized.any { containsPhrase(partial, it) }) {
+                                attention = true
+                                attentionAt = System.currentTimeMillis()
+                                onAttention()
+                            }
+                        }
+                        // Word times of both decoders count from their creation (same frames, never reset), so the
+                        // grammar's "name ends at" lines up with the free text; just consume finished free results.
+                        if (freeDone) {
+                            recentFree.addAll(timedWords(rec.result))
+                            val last = recentFree.lastOrNull()?.end ?: 0f
+                            while (recentFree.isNotEmpty() && recentFree.first().end < last - 10f) recentFree.removeFirst()
+                        }
+                        continue
+                    }
+
+                    // Fuzzy fallback for names the model cannot spell.
+                    if (freeDone) {
+                        val heard = field(rec.result, "text")
                         // With music playing only a near-exact call counts (lyrics are full of almost-names).
                         val need = if (music()) 0.86f else if (strict()) threshold.coerceAtLeast(0.78f) else threshold.coerceAtMost(0.72f)
                         val remainder = match(heard, phrases, need)
                         if (heard.isNotBlank()) Log.d(TAG, "heard='$heard' match=${remainder != null}")
-                        // React before returning the completed recognition result. Waiting for the caller to
-                        // resume after this branch made a valid wake phrase look unresponsive on the face.
                         if (!attention && remainder != null) {
                             attention = true
                             attentionAt = System.currentTimeMillis()
@@ -202,11 +255,7 @@ class WakeWordEngine(
                             onDismiss()
                         }
                     } else if (!attention && !music()) {
-                        // Hand off as soon as the wake phrase is stable in a partial result. This releases
-                        // AudioRecord before Listener opens the microphone for the actual command.
-                        val partial = match(
-                            field(rec.partialResult, "partial"), phrases, threshold.coerceAtMost(0.68f),
-                        )
+                        val partial = match(field(rec.partialResult, "partial"), phrases, threshold.coerceAtMost(0.68f))
                         if (partial != null) {
                             attention = true
                             attentionAt = System.currentTimeMillis()
@@ -221,8 +270,148 @@ class WakeWordEngine(
                 runCatching { mic.stop() }
                 mic.release()
                 rec.close()
+                grammarRec?.close()
             }
         }
+
+    /**
+     * Barge-in by name: while the robot talks, listens (echo-cancelled) only for the wake phrases and stop words.
+     * Returns "stop" or "name" when one is heard clearly, null if cancelled. Words the robot itself is saying
+     * right now ([speakingNow]) never count, so its own voice can't interrupt it.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    suspend fun awaitBargeIn(stopWords: List<String>, speakingNow: () -> String): String? =
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val m = ensureModel()
+            val names = rawPhraseVariants().filter { p -> p.all { knows(m, it) } }
+            val stops = stopWords.map { spokenWords(it) }.filter { p -> p.isNotEmpty() && p.all { knows(m, it) } }
+            if (names.isEmpty() && stops.isEmpty()) return@withContext kotlinx.coroutines.awaitCancellation()
+            val rec = Recognizer(m, 16000f, grammarJson(m, names + stops)).apply { setWords(true) }
+            val minBuf = android.media.AudioRecord.getMinBufferSize(16000, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+            val mic = android.media.AudioRecord(
+                android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION, 16000,
+                android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, 16000),
+            )
+            val aec = if (android.media.audiofx.AcousticEchoCanceler.isAvailable()) android.media.audiofx.AcousticEchoCanceler.create(mic.audioSessionId) else null
+            val ns = if (android.media.audiofx.NoiseSuppressor.isAvailable()) android.media.audiofx.NoiseSuppressor.create(mic.audioSessionId) else null
+            aec?.enabled = true
+            ns?.enabled = true
+            val nameNorm = names.map { p -> p.flatMap { words(it) } }
+            val stopNorm = stops.map { p -> p.flatMap { words(it) } }
+            val buf = ShortArray(800)
+            try {
+                mic.startRecording()
+                while (true) {
+                    ensureActive()
+                    val n = mic.read(buf, 0, buf.size)
+                    if (n <= 0 || !rec.acceptWaveForm(buf, n)) continue
+                    val own = words(speakingNow())
+                    val result = rec.result
+                    val stop = grammarHit(result, stopNorm)
+                    val name = grammarHit(result, nameNorm)
+                    val hit = listOfNotNull(stop?.let { "stop" to it }, name?.let { "name" to it })
+                        .firstOrNull { (_, h) -> h.atStart && h.confidence >= 0.75f && !containsPhrase(own, words(h.phrase)) }
+                    if (hit != null) {
+                        Log.d(TAG, "barge-in ${hit.first}: '${hit.second.first}' conf=${hit.second.second}")
+                        return@withContext hit.first
+                    }
+                }
+                @Suppress("UNREACHABLE_CODE") null
+            } finally {
+                runCatching { mic.stop() }
+                mic.release()
+                aec?.release()
+                ns?.release()
+                rec.close()
+            }
+        }
+
+    /** Result of running the wake detector on a recorded/synthesised clip (diagnostics, `/wake/selftest`). */
+    @kotlinx.serialization.Serializable
+    data class WakeTest(
+        val grammarPhrases: List<String>,
+        val unknownNameWords: List<String>,
+        val grammarHeard: String,
+        val confidence: Float,
+        val detected: Boolean,
+        val freeText: String,
+        val command: String,
+        val freeWords: String = "",
+    )
+
+    /** Runs the same detection as [awaitWake] (grammar + free text) over [audio] (16 kHz) without the microphone. */
+    suspend fun detectOffline(audio: FloatArray): WakeTest = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val m = ensureModel()
+        val spoken = rawPhraseVariants()
+        val known = spoken.filter { p -> p.all { knows(m, it) } }
+        val knownNormalized = known.map { p -> p.flatMap { words(it) } }
+        val grammarRec = known.takeIf { it.isNotEmpty() }?.let { Recognizer(m, 16000f, grammarJson(m, it)).apply { setWords(true) } }
+        val rec = Recognizer(m, 16000f).apply { setWords(true) }
+        try {
+            val padded = audio + FloatArray(8_000)
+            val buf = ShortArray(800)
+            val grammarResults = mutableListOf<String>()
+            val freeTexts = mutableListOf<String>()
+            val freeJson = mutableListOf<String>()
+            var i = 0
+            while (i < padded.size) {
+                val n = minOf(buf.size, padded.size - i)
+                for (k in 0 until n) buf[k] = (padded[i + k].coerceIn(-1f, 1f) * 32767).toInt().toShort()
+                if (grammarRec?.acceptWaveForm(buf, n) == true) grammarResults += grammarRec.result
+                if (rec.acceptWaveForm(buf, n)) rec.result.let { freeJson += it; freeTexts += field(it, "text") }
+                i += n
+            }
+            grammarRec?.let { grammarResults += it.finalResult }
+            rec.finalResult.let { freeJson += it; freeTexts += field(it, "text") }
+            val freeWords = freeJson.flatMap { timedWords(it) }
+            val hits = grammarResults.mapNotNull { grammarHit(it, knownNormalized) }
+            val hit = hits.firstOrNull { isCall(it, freeWords) } ?: hits.maxByOrNull { it.confidence }
+            val free = freeTexts.filter { it.isNotBlank() }.joinToString(" ")
+            val need = (1.6f - config.current.wake.sensitivity.coerceIn(0.4f, 0.98f)).coerceIn(0.55f, 0.85f)
+            WakeTest(
+                grammarPhrases = known.map { it.joinToString(" ") },
+                unknownNameWords = spokenWords(config.current.personality.name).filterNot { knows(m, it) },
+                grammarHeard = hit?.let { it.phrase + if (isCall(it, freeWords)) "" else " (não é chamado)" }.orEmpty(),
+                confidence = hit?.confidence ?: 0f,
+                detected = if (known.isNotEmpty()) hit != null && isCall(hit, freeWords) && hit.confidence >= need else match(free, phraseVariants(), 0.72f) != null,
+                freeText = free,
+                freeWords = freeWords.joinToString(" ") { "${it.word}@%.2f-%.2f".format(it.start, it.end) } +
+                    hits.joinToString(" | ", prefix = "  grammar: ") { "${it.phrase}@%.2f-%.2f start=${it.atStart}".format(it.startSec, it.endSec) },
+                command = if (hit != null && isCall(hit, freeWords)) freeJson.joinToString(" ") { wordsAfter(it, hit.endSec) }.trim()
+                    else match(free, phraseVariants(), 0.5f).orEmpty(),
+            )
+        } finally {
+            grammarRec?.close()
+            rec.close()
+        }
+    }
+
+    /** Vosk grammar: the phrases, greetings alone (so "ei" isn't [unk]) and [unk] for everything else. */
+    private fun grammarJson(m: Model, phrases: List<List<String>>): String {
+        val greetings = GREETING_WORDS.filter { knows(m, it) }.map { listOf(it) }
+        return ((phrases + greetings).distinct().map { "\"" + it.joinToString(" ") + "\"" } + "\"[unk]\"").joinToString(",", "[", "]")
+    }
+
+    /** Words of every configured phrase, lowercase but with accents (as the model spells them). */
+    private fun rawPhraseVariants(): List<List<String>> {
+        val cfg = config.current
+        val names = listOf(cfg.personality.name) + cfg.wake.nameAliases
+        return cfg.wake.phrases.flatMap { p ->
+            if (p.contains("{name}")) names.map { p.replace("{name}", it) } else listOf(p)
+        }.map { spokenWords(it) }.filter { it.isNotEmpty() }.distinct()
+    }
+
+    /** Name words the recognizer can't spell, or null if the model isn't loaded yet. */
+    fun unknownNameWords(name: String = config.current.personality.name): List<String>? {
+        val m = model ?: return null
+        return spokenWords(name).filterNot { knows(m, it) }
+    }
+
+    /** Funny names that this model recognizes well (all in its vocabulary). */
+    fun goodNames(): List<String> {
+        val m = model ?: return emptyList()
+        return FUNNY_NAMES.filter { n -> spokenWords(n).all { knows(m, it) } }
+    }
 
     private fun field(json: String?, key: String) = runCatching {
         (AppJson.parseToJsonElement(json.orEmpty()).jsonObject[key] as? JsonPrimitive)?.content
@@ -243,6 +432,92 @@ class WakeWordEngine(
         fun words(s: String): List<String> = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")
             .split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
+
+        /** Fun names that tend to be in Portuguese Vosk vocabularies; filtered by [goodNames] for the loaded model. */
+        val FUNNY_NAMES = listOf(
+            "Parafuso", "Gambiarra", "Torresmo", "Rabanete", "Coxinha", "Abacaxi", "Brigadeiro", "Biscoito",
+            "Salsicha", "Farofa", "Caramelo", "Sabugo", "Bigode", "Tampinha", "Pastel", "Pudim", "Zezinho", "Cocada",
+        )
+
+        /** Lowercase words keeping accents (Vosk vocabularies are spelled with them). */
+        fun spokenWords(s: String): List<String> = s.lowercase().split(Regex("[^\\p{L}0-9]+")).filter { it.isNotBlank() }
+
+        /** True if the model can output [word]: a grammar silently drops unknown words. Uses the native lookup. */
+        fun knows(m: Model, word: String): Boolean = runCatching {
+            com.sun.jna.Function.getFunction("vosk", "vosk_model_find_word").invokeInt(arrayOf(m.pointer, word)) >= 0
+        }.getOrDefault(true)
+
+        /**
+         * A wake phrase found in a grammar result: the phrase, the confidence of its weakest word, when it ends in the
+         * audio (seconds) and whether it opened the utterance. A name in the middle of a sentence ("comprei um
+         * parafuso") is someone talking *about* it, not calling it.
+         */
+        fun grammarHit(json: String, phrases: List<List<String>>): GrammarHit? = runCatching {
+            val obj = AppJson.parseToJsonElement(json).jsonObject
+            val items = (obj["result"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonObject }.orEmpty()
+            val itemWords = items.map { (it["word"] as JsonPrimitive).content }
+            val norm = itemWords.map { if (it == "[unk]") "[unk]" else words(it).joinToString(" ") }
+            for (phrase in phrases) {
+                val start = norm.windowed(phrase.size).indexOfFirst { it == phrase }
+                if (start < 0) continue
+                val part = items.subList(start, start + phrase.size)
+                val conf = part.minOf { (it["conf"] as JsonPrimitive).content.toFloat() }
+                val begin = (part.first()["start"] as? JsonPrimitive)?.content?.toFloatOrNull() ?: 0f
+                val end = (part.last()["end"] as? JsonPrimitive)?.content?.toFloatOrNull() ?: 0f
+                // Only greetings may come before the phrase; any other (unknown) word means mid-sentence.
+                val atStart = norm.subList(0, start).all { it in GREETINGS }
+                return GrammarHit(phrase.joinToString(" "), conf, begin, end, atStart)
+            }
+            null
+        }.getOrNull()
+
+        fun timedWords(json: String): List<TimedWord> = runCatching {
+            val obj = AppJson.parseToJsonElement(json).jsonObject
+            val arr = (obj["result"] ?: obj["partial_result"]) as? kotlinx.serialization.json.JsonArray
+            arr?.map { it.jsonObject }.orEmpty().map {
+                TimedWord(
+                    (it["word"] as JsonPrimitive).content,
+                    (it["start"] as JsonPrimitive).content.toFloat(),
+                    (it["end"] as JsonPrimitive).content.toFloat(),
+                )
+            }
+        }.getOrDefault(emptyList())
+
+        /**
+         * Is this grammar hit really someone *calling* the robot? Works for any name: the grammar decoder can only
+         * say the configured phrases, so it is cross-checked against what the free decoder heard at the same time.
+         * - another (non-greeting) word right before the phrase → it's mid-sentence ("comprei um parafuso");
+         * - the free decoder heard a different word over the same stretch → a longer word that contains the name
+         *   ("anexo" for "nexo"). If the free decoder heard nothing there, the grammar decides.
+         */
+        fun isCall(hit: GrammarHit, free: List<TimedWord>): Boolean {
+            // Words before the phrase are judged by the free decoder (real words); the grammar's [unk] also fires on
+            // breaths and noise, so it is only used when the free decoder has nothing at all.
+            if (!hit.atStart && free.isEmpty()) return false
+            val name = words(hit.phrase).filterNot { it in GREETINGS }
+            val before = free.filter { it.end <= hit.startSec + 0.05f && it.end > hit.startSec - 2.5f }
+            if (before.any { w -> words(w.word).any { it !in GREETINGS } }) return false
+            val over = free.filter { it.start < hit.endSec - 0.05f && it.end > hit.startSec + 0.05f }
+                .flatMap { words(it.word) }.filterNot { it in GREETINGS }
+            if (over.isEmpty() || name.isEmpty()) return true
+            // Only a longer word that *contains* the name contradicts it ("anexo" ⊃ "nexo"). A plain mishearing of an
+            // unusual name ("mesmo" for "torresmo") is normal for the free decoder and must not block a real call.
+            return over.none { w -> name.any { n -> w != n && w.length > n.length && w.contains(n) } }
+        }
+
+        private val GREETING_WORDS = listOf("ei", "oi", "olá", "ok", "fala", "hey", "e", "aí")
+        private val GREETINGS = setOf("ei", "oi", "ola", "ok", "fala", "hey", "e", "ai", "bom", "dia", "boa", "tarde", "noite")
+
+        /** Words of a free-recognizer result that start after [afterSec] (the command after the wake phrase). */
+        fun wordsAfter(json: String, afterSec: Float): String = runCatching {
+            val obj = AppJson.parseToJsonElement(json).jsonObject
+            (obj["result"] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonObject }.orEmpty()
+                .filter { ((it["start"] as JsonPrimitive).content.toFloat()) >= afterSec - 0.05f }
+                .joinToString(" ") { (it["word"] as JsonPrimitive).content }
+        }.getOrDefault("")
+
+        fun containsPhrase(heard: List<String>, phrase: List<String>): Boolean =
+            phrase.isNotEmpty() && heard.windowed(phrase.size).any { it == phrase }
 
         /** Extracts a likely spelling of the configured name from one calibration utterance. */
         fun nameCandidate(text: String): String? {
@@ -290,7 +565,6 @@ class WakeWordEngine(
             .replace("q", "k")
             .replace("z", "s")
             .replace("y", "i")
-            .replace(Regex("[aeiou]"), "a")
 
         private fun levenshtein(a: String, b: String): Int {
             var prev = IntArray(b.length + 1) { it }
@@ -306,3 +580,11 @@ class WakeWordEngine(
         }
     }
 }
+
+data class GrammarHit(val phrase: String, val confidence: Float, val startSec: Float, val endSec: Float, val atStart: Boolean) {
+    val first get() = phrase
+    val second get() = confidence
+}
+
+/** A word from the free recognizer with its time in the audio (seconds since the decoder started). */
+data class TimedWord(val word: String, val start: Float, val end: Float)

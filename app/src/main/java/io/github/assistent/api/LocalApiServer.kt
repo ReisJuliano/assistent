@@ -585,6 +585,26 @@ class LocalApiServer(private val g: AppGraph) {
                         }
                     })
                 })
+                // Wake phrase self-test: speaks {"text"} with the system voice (or takes a WAV body) and runs the
+                // wake detector on it. Shows whether the name is in the recognizer's vocabulary and how sure it is.
+                post("/wake/selftest", guard {
+                    val bytes = call.receive<ByteArray>()
+                    val audio = if (bytes.size > 4 && String(bytes, 0, 4) == "RIFF") io.github.assistent.voice.Wav.decode16kMono(bytes) else {
+                        val text = (AppJson.parseToJsonElement(String(bytes, Charsets.UTF_8)) as JsonObject)["text"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+                            ?: error("send {\"text\":\"ei nome\"} or a WAV")
+                        val clip = g.speaker.synthesize(text) ?: error("TTS unavailable")
+                        io.github.assistent.voice.Wav.pcmTo16k(clip.pcm, clip.sampleRate)
+                    }
+                    call.respond(g.wakeWord.detectOffline(audio))
+                })
+                get("/wake/names", guard {
+                    g.wakeWord.ensureModel()
+                    call.respond(buildJsonObject {
+                        put("name", g.config.current.personality.name)
+                        put("unknownWords", kotlinx.serialization.json.JsonArray(g.wakeWord.unknownNameWords().orEmpty().map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                        put("suggestions", kotlinx.serialization.json.JsonArray(g.wakeWord.goodNames().map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                    })
+                })
                 // What the robot hears in a WAV clip (YAMNet groups and scores).
                 post("/sounds/classify", guard {
                     val r = g.ears.classifyClip(io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>()))

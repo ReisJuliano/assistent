@@ -29,6 +29,22 @@ class PcmPlayer {
             return if (idx in levels.indices) levels[idx] else 0f
         }
 
+    @Volatile private var expectedFrames = 0
+
+    /** 0..1 of the current utterance already heard (by the hardware playback head). */
+    val playedFraction: Float
+        get() {
+            val t = track ?: return 0f
+            val total = expectedFrames.takeIf { it > 0 } ?: return 0f
+            return runCatching { t.playbackHeadPosition.toFloat() / total }.getOrDefault(0f).coerceIn(0f, 1f)
+        }
+
+    /** Plays a whole clip whose length is known (lets [playedFraction] work). */
+    suspend fun playBytes(pcm: ByteArray, sampleRate: Int) {
+        expectedFrames = pcm.size / 2
+        try { play(pcm.inputStream(), sampleRate) } finally { expectedFrames = 0 }
+    }
+
     fun stop() {
         track?.runCatching { pause(); flush() }
     }

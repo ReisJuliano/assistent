@@ -162,6 +162,29 @@ awake, not cleared by conversation):
 | Known person leaves after ≥1 min | face gone 20 s | `WAVE_BACK` + "Tchau, {n}!" |
 | Loud sudden sound | RMS spike | quick surprise (or the motion wake-up logic while asleep) |
 
+### Wake phrase (`voice/WakeWord.kt`) — works for any name, nothing is hard-coded
+
+- `knows(model, word)` calls the native `vosk_model_find_word` through JNA: a Vosk grammar silently drops words that
+  are not in the model vocabulary. Phrases whose words are all known are detected by a **grammar recognizer** (phrases +
+  greetings + `[unk]`, word confidences); unknown names fall back to fuzzy matching of the free decoder (and Settings
+  warns, suggesting `goodNames()`).
+- A grammar hit only counts as a call when `isCall` agrees with the free decoder (word timings, same frames): no other
+  word right before it (mid-sentence: "comprei um parafuso"), and no longer word containing it over the same stretch
+  ("anexo" ⊃ "nexo"). The command is the free decoder's words after the name's end time.
+- `POST /wake/selftest {"text"}` synthesises the text with the system voice and runs the detector offline; `GET /wake/names`
+  lists unknown name words and good names. TTS self-test, 16 phrases × 8 names: 14 right; misses were "nexo, liga…"
+  (heard as "anexo") and an article swallowed before a name.
+
+### Speaking while generating and barge-in (`voice/SpeechPipeline.kt`, see docs/STREAMING_E_INTERRUPCAO.md)
+
+- `Speaker.synthesize(text) → SpeechClip` and `Speaker.playClip` are separate (own locks): `SpeechPipeline` synthesises up
+  to `tts.prefetch` clips ahead while playing. Measured on the emulator: 25 sentences, gaps 0–4 ms.
+  `heardText()` = finished clips + the played fraction of the current one (`PcmPlayer.playedFraction`).
+- `voice.bargeIn = name` (default): while speaking, `WakeWordEngine.awaitBargeIn` listens (VOICE_COMMUNICATION + AEC + NS)
+  with a grammar of the wake phrases + `voice.bargeInStopWords`; words the robot is saying right now never count. Stop
+  word → quiet; name → listen for the new command. `voice` mode = energy detector. `POST /stop` cancels the LLM stream,
+  the pipeline and records what was heard; "o que você ia falar?" resumes from there (verified).
+
 `WakeWordEngine.awaitWake` runs its own `AudioRecord` loop (feeding Vosk with `acceptWaveForm`) precisely so the same
 microphone stream can be analysed for music and loud sounds. The Portuguese small model has the old flat layout
 (`final.mdl` at the root), so the model root is detected by `final.mdl` or `am/final.mdl`.

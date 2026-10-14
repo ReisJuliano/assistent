@@ -66,6 +66,9 @@ class AssistantRuntime(
     private var emotionJob: Job? = null
     private var bargeInJob: Job? = null
     private var activeChatJob: Job? = null
+    /** Set by the app graph: listens for the wake phrase / stop words while speaking ("name" barge-in mode). */
+    var nameBargeIn: (suspend (List<String>, () -> String) -> String?)? = null
+    @Volatile private var bargeStopOnly = false
     private var speechPipeline: SpeechPipeline? = null
     @Volatile private var interruptedThisTurn = false
     @Volatile private var pendingInterruptText = ""
@@ -217,29 +220,19 @@ class AssistantRuntime(
         val mode = config.current.voice.bargeIn.lowercase()
         if (mode == "off") return
         bargeInJob = scope.launch {
-            if (bargeIn.awaitSpeech { speaker.player.level }) {
-                if (mode == "name") {
-                    interruptSpeaking()
-                    val heard = listener.listen(2_500, {}, {}).trim()
-                    if (isBargeCommand(heard)) pendingInterruptText = heard
-                    else pendingInterruptText = ""
-                } else {
-                    interruptSpeaking()
-                }
+            if (mode == "name") {
+                val listenFor = nameBargeIn ?: return@launch
+                val kind = listenFor(config.current.voice.bargeInStopWords) { speechPipeline?.speakingNow().orEmpty() } ?: return@launch
+                bargeStopOnly = kind == "stop"
+                pendingInterruptText = ""
+                interruptSpeaking()
+                setActivity(if (bargeStopOnly) Activity.IDLE else Activity.LISTENING)
+            } else if (bargeIn.awaitSpeech { speaker.player.level }) {
+                bargeStopOnly = false
+                interruptSpeaking()
                 setActivity(Activity.LISTENING)
             }
         }
-    }
-
-    private fun isBargeCommand(text: String): Boolean {
-        val normalized = text.lowercase()
-            .replace(Regex("[^a-záéíóúãõç ]"), " ")
-            .replace(Regex("\\s+"), " ").trim()
-        if (normalized.isBlank()) return false
-        val stop = config.current.voice.bargeInStopWords.any { normalized.contains(it.lowercase()) }
-        if (!stop) return false
-        val name = config.current.personality.name.lowercase().trim()
-        return name.isBlank() || normalized.contains(name) || normalized.split(' ').size <= 2
     }
 
     private fun stopBargeIn() {
@@ -296,12 +289,18 @@ class AssistantRuntime(
         val reply = try {
             if (speak) {
                 val splitter = SentenceSplitter()
+                val chatStartedAt = System.currentTimeMillis()
+                var firstTokenAt = 0L
                 var startedSpeaking = false
                 val pipeline = SpeechPipeline(
                     scope = scope,
-                    speaker = speaker,
-                    capacity = config.current.tts.prefetch,
+                    synthesize = speaker::synthesize,
+                    play = speaker::playClip,
+                    playedFraction = { speaker.player.playedFraction },
+                    stopPlayback = speaker::stop,
+                    prefetch = config.current.tts.prefetch,
                     onFirstChunk = {
+                        Log.i(TAG, "first audio after ${System.currentTimeMillis() - chatStartedAt}ms (first token ${firstTokenAt - chatStartedAt}ms)")
                         if (!startedSpeaking) {
                             startedSpeaking = true
                             spokeDuringStreaming = true
@@ -310,12 +309,14 @@ class AssistantRuntime(
                         }
                     },
                     onHeard = { chunk -> spokenReply.append(chunk).append(' ') },
+                    onGap = { ms -> Log.d(TAG, "speech gap ${ms}ms") },
                 )
                 speechPipeline = pipeline
                 pipeline.start()
                 try {
                     val generation = scope.async {
                         brain.askStreaming(text, { if (!startedSpeaking) setActivity(it) }) { delta ->
+                            if (firstTokenAt == 0L) firstTokenAt = System.currentTimeMillis()
                             generatedReply.append(delta)
                             for (sentence in splitter.push(delta)) {
                                 if (interruptRequested) return@askStreaming
@@ -330,11 +331,16 @@ class AssistantRuntime(
                         val tail = splitter.flush()
                         if (tail.isNotBlank() && !interruptRequested) pipeline.submit(tail)
                         pipeline.finish()
+                        // Generation was already complete but the speech was cut: remember where the listener stopped.
+                        if (interruptRequested) {
+                            brain.noteInterrupted(it.text, pipeline.cancel(), it.emotion)
+                            interruptedThisTurn = true
+                        }
                     }
                 } catch (e: CancellationException) {
-                    pipeline.cancel()
+                    val heard = pipeline.cancel()
                     if (interruptRequested) {
-                        brain.noteInterrupted(generatedReply.toString(), spokenReply.toString(), currentReplyEmotion)
+                        brain.noteInterrupted(generatedReply.toString(), heard.ifBlank { spokenReply.toString() }, currentReplyEmotion)
                         interruptedThisTurn = true
                         activeChatJob = null
                         setActivity(Activity.LISTENING)
@@ -434,6 +440,8 @@ class AssistantRuntime(
             chat(text, speak = true)
             if (interruptedThisTurn) {
                 interruptedThisTurn = false
+                // "para", "chega"…: just be quiet, don't start listening.
+                if (bargeStopOnly) { bargeStopOnly = false; break }
                 if (state.value.activity == Activity.SLEEPING) break
                 val interrupted = pendingInterruptText.also { pendingInterruptText = "" }
                 text = interrupted.ifBlank { listen(7_000) }

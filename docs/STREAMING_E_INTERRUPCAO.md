@@ -3,6 +3,16 @@
 Plano para quem for implementar (pessoa ou agente como o Codex). **Leia antes o [CLAUDE.md](../CLAUDE.md)**
 (arquitetura, convenções, como testar no emulador pela API) e as regras gerais do [ROADMAP.md](ROADMAP.md).
 
+## Estado (2026-10-14)
+
+Implementado e medido no emulador: fila com síntese adiantada (`SpeechPipeline`, buracos de 0–4 ms em 25 frases),
+`heardText()` pela posição real de reprodução, cancelamento do stream da IA no `/stop`, continuação "o que você ia
+falar?" a partir do ponto ouvido (inclusive quando a geração já tinha terminado), interrupção `name` por gramática
+Vosk com eco cancelado que ignora as palavras que o próprio robô está falando. Primeiro áudio ~2–2,5 s após o
+primeiro token (o primeiro pedaço agora sai na primeira vírgula depois de 24 caracteres).
+Falta: medir a interrupção por voz real num celular (o emulador usa o microfone do PC) e o modo `voice` com rejeição
+de eco por correlação.
+
 ## Objetivo
 
 1. **Responder enquanto escreve:** a primeira frase da resposta começa a ser falada assim que o modelo a termina,

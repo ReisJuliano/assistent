@@ -175,6 +175,7 @@ class AppGraph(context: Context) {
         }
         alerts.runtime = runtime
         runtime.reminderPhrases = io.github.assistent.core.ReminderPhrases(config, llm)
+        runtime.nameBargeIn = { stops, speakingNow -> wakeWord.awaitBargeIn(stops, speakingNow) }
         reminders.onEscalate = runtime::onReminderEscalation
         messages.onDeliver = { person, message ->
             runtime.life.play(io.github.assistent.face.Scene.MESSAGE_DELIVERY)

@@ -33,7 +33,7 @@ class SentenceSplitter(private val minChars: Int = 25) {
             if (c == '.' && isDecimalPoint(i)) continue
             if (c == '.' && isAbbreviation(i)) continue
             if (c == ':' && isTimeColon(i)) continue
-            val required = if (!releasedFirstChunk && firstChunkBoundary) 40 else minChars
+            val required = if (!releasedFirstChunk && firstChunkBoundary) 24 else minChars
             if (i + 1 < required && c != '\n') continue
             val next = buffer.getOrNull(i + 1)
             if ((next == null || next.isWhitespace()) && (!releasedFirstChunk || !firstChunkBoundary || i >= 40)) {

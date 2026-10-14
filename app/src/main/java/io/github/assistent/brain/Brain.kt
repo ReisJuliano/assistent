@@ -43,6 +43,9 @@ class Brain(
         val spoken = spokenUpTo.trim()
         if (full.isBlank() || spoken.length >= full.length) return
         interruptedReply = InterruptedReply(full, spoken, emotion)
+        // The full reply may already be in the history (generation finished before the cut): keep only what was heard.
+        val last = history.lastOrNull()
+        if (last?.role == "assistant" && last.toolCalls == null && last.content?.trim() == full) history.removeLast()
         history += ChatMessage("assistant", spoken.ifBlank { "..." })
         history += ChatMessage("system", "[interrompido pelo usuário depois de: '$spoken'; o resto planejado era: '${full.removePrefix(spoken).trim()}']")
     }

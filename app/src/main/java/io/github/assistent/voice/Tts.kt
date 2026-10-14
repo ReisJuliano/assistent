@@ -39,8 +39,23 @@ class Speaker(
         player.effect = { config.current.tts.robotVoice }
     }
 
-    suspend fun speak(text: String) = lock.withLock {
-        if (text.isBlank()) return@withLock
+    private val synthLock = Mutex()
+
+    /** Speaks [text] now (synthesis then playback). Streaming replies use [synthesize] + [playClip] instead. */
+    suspend fun speak(text: String) {
+        val clip = synthesize(text) ?: return
+        playClip(clip)
+    }
+
+    /** Plays a clip; only one at a time, so fillers, bubbles and replies never talk over each other. */
+    suspend fun playClip(clip: SpeechClip) = lock.withLock { player.playBytes(clip.pcm, clip.sampleRate) }
+
+    /**
+     * Turns text into PCM without playing it, so the next sentence can be prepared while the current one plays.
+     * A remote voice that fails (offline, quota…) falls back to the system voice: never silent.
+     */
+    suspend fun synthesize(text: String): SpeechClip? = synthLock.withLock {
+        if (text.isBlank()) return@withLock null
         val spokenText = text
             .replace(Regex("(?i)\\bh\\s*m\\s*m+\\b"), "humm")
             .replace(Regex("(?i)\\bhm+\\b"), "humm")
@@ -54,15 +69,14 @@ class Speaker(
         }
         val error = result.exceptionOrNull()
         if (error is kotlinx.coroutines.CancellationException) throw error
-        // Remote voice failed (offline, quota…): never stay silent, fall back to the system voice.
-        if (error != null && cfg.provider != "android") androidTts(spokenText, cfg)
-        else result.getOrThrow()
+        val pcm = if (error != null && cfg.provider != "android") androidTts(spokenText, cfg) else result.getOrThrow()
+        pcm?.let { SpeechClip(text, it.first, it.second) }
     }
 
     fun stop() = player.stop()
 
     /** OpenAI `/audio/speech`; also Kokoro-FastAPI, openedai-speech, LocalAI… (`response_format=pcm`, 24 kHz). */
-    private suspend fun openAi(text: String, cfg: TtsConfig) {
+    private suspend fun openAi(text: String, cfg: TtsConfig): Pair<ByteArray, Int> {
         val body = buildJsonObject {
             put("model", cfg.model); put("input", text); put("voice", cfg.voice)
             put("response_format", "pcm"); put("speed", cfg.speed)
@@ -71,10 +85,10 @@ class Speaker(
         val req = Request.Builder().url(cfg.baseUrl.trimEnd('/') + "/audio/speech")
             .apply { if (cfg.apiKey.isNotBlank()) header("Authorization", "Bearer ${cfg.apiKey}") }
             .post(body.toString().toRequestBody(EventDispatcher.JSON)).build()
-        stream(req, 24_000)
+        return fetch(req, 24_000)
     }
 
-    private suspend fun elevenLabs(text: String, cfg: TtsConfig) {
+    private suspend fun elevenLabs(text: String, cfg: TtsConfig): Pair<ByteArray, Int> {
         val body = buildJsonObject {
             put("text", text); put("model_id", cfg.elevenLabsModel)
         }
@@ -82,21 +96,20 @@ class Speaker(
             .url("https://api.elevenlabs.io/v1/text-to-speech/${cfg.elevenLabsVoiceId}/stream?output_format=pcm_24000")
             .header("xi-api-key", cfg.apiKey)
             .post(body.toString().toRequestBody(EventDispatcher.JSON)).build()
-        stream(req, 24_000)
+        return fetch(req, 24_000)
     }
 
-    private suspend fun stream(req: Request, rate: Int) {
-        val res = withContext(Dispatchers.IO) { http.newCall(req).execute() }
-        res.use {
+    private suspend fun fetch(req: Request, rate: Int): Pair<ByteArray, Int> = withContext(Dispatchers.IO) {
+        http.newCall(req).execute().use {
             if (!it.isSuccessful) throw IOException("TTS HTTP ${it.code}: ${it.body?.string()?.take(200)}")
-            player.play(it.body!!.byteStream(), rate)
+            it.body!!.bytes() to rate
         }
     }
 
     // ------------------------------------------------------------ Android system TTS
 
-    private suspend fun androidTts(text: String, cfg: TtsConfig) {
-        val tts = ensureAndroid() ?: return
+    private suspend fun androidTts(text: String, cfg: TtsConfig): Pair<ByteArray, Int>? {
+        val tts = ensureAndroid() ?: return null
         val locale = Locale.forLanguageTag(config.current.personality.language)
         tts.language = locale
         val robotPitch = if (cfg.androidRobot) cfg.pitch * 0.78f else cfg.pitch
@@ -112,7 +125,7 @@ class Speaker(
             ?: voices.maxByOrNull { it.quality }
         voice?.let { tts.voice = it }
 
-        val file = File(context.cacheDir, "tts.wav")
+        val file = File(context.cacheDir, "tts-${System.nanoTime()}.wav")
         val ok = suspendCancellableCoroutine { cont ->
             val id = "u" + System.nanoTime()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -123,11 +136,13 @@ class Speaker(
             })
             tts.synthesizeToFile(text, Bundle(), file, id)
         }
-        if (!ok || !file.exists()) return
-        val (rate, offset) = wavInfo(file)
-        file.inputStream().use { input ->
-            input.skip(offset.toLong())
-            player.play(input, rate)
+        try {
+            if (!ok || !file.exists()) return null
+            val (rate, offset) = wavInfo(file)
+            val bytes = file.readBytes()
+            return bytes.copyOfRange(offset.coerceAtMost(bytes.size), bytes.size) to rate
+        } finally {
+            file.delete()
         }
     }
 

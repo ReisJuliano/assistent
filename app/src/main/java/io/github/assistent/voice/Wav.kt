@@ -34,6 +34,13 @@ object Wav {
         error("WAV has no data chunk")
     }
 
+    /** Raw 16-bit little-endian mono PCM at [rate] → 16 kHz floats. */
+    fun pcmTo16k(pcm: ByteArray, rate: Int): FloatArray {
+        val b = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN)
+        val x = FloatArray(pcm.size / 2) { b.getShort(it * 2) / 32768f }
+        return if (rate == 16_000) x else resample(x, rate, 16_000)
+    }
+
     private fun resample(x: FloatArray, from: Int, to: Int): FloatArray {
         val n = (x.size.toLong() * to / from).toInt()
         return FloatArray(n) { i ->

@@ -494,6 +494,43 @@ private fun SettingsList(
                     var calibration by remember { mutableStateOf("") }
                     Section("Ativação por voz") {
                         SwitchRow("Palavra de ativação", "Offline. Toque no rosto também ativa.", cfg.wake.enabled) { v -> up { it.copy(wake = it.wake.copy(enabled = v)) } }
+                        // The recognizer can only "hear" names in its vocabulary: check the current one and offer good ones.
+                        var unknown by remember { mutableStateOf<List<String>?>(null) }
+                        var good by remember { mutableStateOf(emptyList<String>()) }
+                        var nameTest by remember { mutableStateOf("") }
+                        LaunchedEffect(cfg.personality.name, cfg.wake.modelUrl) {
+                            runCatching { graph.wakeWord.ensureModel() }
+                            unknown = graph.wakeWord.unknownNameWords()
+                            good = graph.wakeWord.goodNames()
+                        }
+                        unknown?.let { u ->
+                            if (u.isNotEmpty()) Hint("O reconhecedor não conhece “${u.joinToString(" ")}”: ele vai adivinhar por aproximação e errar mais. Prefira um nome da lista abaixo ou outra palavra comum.")
+                            else Hint("Nome “${cfg.personality.name}” reconhecido pelo modelo de voz.")
+                        }
+                        if (good.isNotEmpty()) {
+                            Label("Nomes engraçados que ele entende bem")
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                good.forEach { n ->
+                                    FilterChip(
+                                        selected = cfg.personality.name.equals(n, true),
+                                        onClick = { up { it.copy(personality = it.personality.copy(name = n)) } },
+                                        label = { Text(n) },
+                                    )
+                                }
+                            }
+                        }
+                        FilledTonalButton(onClick = {
+                            nameTest = "testando…"
+                            scope.launch {
+                                nameTest = runCatching {
+                                    val clip = graph.speaker.synthesize("ei ${cfg.personality.name}, que horas são?") ?: error("voz indisponível")
+                                    val r = graph.wakeWord.detectOffline(io.github.assistent.voice.Wav.pcmTo16k(clip.pcm, clip.sampleRate))
+                                    if (r.detected) "Ouviu o chamado (confiança ${(r.confidence * 100).toInt()}%) e o pedido: “${r.command}”"
+                                    else "Não reconheceu o chamado com a voz de teste. Tente outro nome."
+                                }.getOrElse { "Erro: ${it.message}" }
+                            }
+                        }) { Text("Testar nome") }
+                        if (nameTest.isNotBlank()) Hint(nameTest)
                         Hint("Uma frase por linha. {name} = nome do assistente. Ex.: “ei {name}”, “fala {name}”, “bom dia {name}”.")
                         Field("Frases", cfg.wake.phrases.joinToString("\n"), singleLine = false) { v ->
                             up { it.copy(wake = it.wake.copy(phrases = v.lines().map(String::trim).filter(String::isNotEmpty))) }
