@@ -490,8 +490,10 @@ private fun SettingsList(
                 }
                 item {
                     val state by graph.runtime.state.collectAsState()
+                    val calibrationScope = rememberCoroutineScope()
+                    var calibration by remember { mutableStateOf("") }
                     Section("Ativação por voz") {
-                        SwitchRow("Palavra de ativação", "Offline (Vosk). Toque no rosto também ativa.", cfg.wake.enabled) { v -> up { it.copy(wake = it.wake.copy(enabled = v)) } }
+                        SwitchRow("Palavra de ativação", "Offline. Toque no rosto também ativa.", cfg.wake.enabled) { v -> up { it.copy(wake = it.wake.copy(enabled = v)) } }
                         Hint("Uma frase por linha. {name} = nome do assistente. Ex.: “ei {name}”, “fala {name}”, “bom dia {name}”.")
                         Field("Frases", cfg.wake.phrases.joinToString("\n"), singleLine = false) { v ->
                             up { it.copy(wake = it.wake.copy(phrases = v.lines().map(String::trim).filter(String::isNotEmpty))) }
@@ -499,6 +501,34 @@ private fun SettingsList(
                         Field("Variações do nome (separadas por vírgula)", cfg.wake.nameAliases.joinToString(", ")) { v ->
                             up { it.copy(wake = it.wake.copy(nameAliases = v.split(',').map(String::trim).filter(String::isNotEmpty))) }
                         }
+                        Button(
+                            enabled = cfg.personality.name.isNotBlank() && calibration.isBlank(),
+                            onClick = {
+                                calibrationScope.launch {
+                                    val learned = linkedSetOf<String>()
+                                    repeat(5) { index ->
+                                        calibration = "Fale apenas “${cfg.personality.name}” (${index + 1}/5)"
+                                        val heard = graph.runtime.listen(5_000)
+                                        io.github.assistent.voice.WakeWordEngine.nameCandidate(heard)?.let { candidate ->
+                                            if (!candidate.equals(cfg.personality.name, true)) learned += candidate
+                                        }
+                                    }
+                                    if (learned.isNotEmpty()) {
+                                        up { it.copy(wake = it.wake.copy(nameAliases = (it.wake.nameAliases + learned).distinct().take(12))) }
+                                        calibration = "Aprendi ${learned.size} variação(ões)"
+                                    } else {
+                                        calibration = "Não consegui ouvir as repetições"
+                                    }
+                                    kotlinx.coroutines.delay(2_500)
+                                    calibration = ""
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Outlined.RecordVoiceOver, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (calibration.isBlank()) "Calibrar nome (5 repetições)" else calibration)
+                        }
+                        Hint("Diga somente o nome cinco vezes, com distância e entonações diferentes. As variações ouvidas ficam salvas como aliases; nenhuma palavra é fixa no código.")
                         SliderRow("Rigor (maior = menos falsos positivos)", cfg.wake.sensitivity, 0.5f..0.95f) { v -> up { it.copy(wake = it.wake.copy(sensitivity = v)) } }
                         SliderRow("Dormir após inatividade (s, 0 = nunca)", cfg.wake.sleepAfterSeconds.toFloat(), 0f..600f, format = { "${it.roundToInt()}" }) { v ->
                             up { it.copy(wake = it.wake.copy(sleepAfterSeconds = v.roundToInt())) }

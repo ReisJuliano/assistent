@@ -244,6 +244,16 @@ class WakeWordEngine(
             .replace(Regex("\\p{Mn}+"), "")
             .split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
 
+        /** Extracts a likely spelling of the configured name from one calibration utterance. */
+        fun nameCandidate(text: String): String? {
+            val ignored = setOf("ei", "hey", "oi", "ola", "olá", "ok", "okay", "fala", "acorda", "bom", "dia")
+            val candidate = text.trim().split(Regex("\\s+"))
+                .filter { words(it).isNotEmpty() && words(it).first() !in ignored }
+                .joinToString(" ") { it.trim { c -> !c.isLetterOrDigit() } }
+                .trim()
+            return candidate.takeIf { words(it).size in 1..3 && it.length >= 2 }
+        }
+
         /** Returns the text after the matched phrase, or null when no phrase matches. */
         fun match(text: String, phrases: List<List<String>>, threshold: Float): String? {
             val heard = words(text)

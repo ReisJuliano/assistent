@@ -33,6 +33,11 @@ class CoreLogicTest {
         assertEquals("acende a luz", WakeWordEngine.match("ei oswaldo acende a luz", custom, 0.75f))
     }
 
+    @Test fun calibrationExtractsOnlyTheSpokenName() {
+        assertEquals("Oswaldo", WakeWordEngine.nameCandidate("ei Oswaldo"))
+        assertEquals("Rubia", WakeWordEngine.nameCandidate("Rubia"))
+    }
+
     @Test fun emotionTagIsParsedAndStripped() {
         val (e, text) = Brain.parseEmotion("[joy] **Oba!** Vai fazer sol amanhã.")
         assertEquals(Emotion.JOY, e)
