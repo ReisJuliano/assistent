@@ -1,0 +1,45 @@
+# Build
+.gradle/
+build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Local machine / secrets — NEVER commit
+local.properties
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+secrets.properties
+*.env
+.env*
+config.local.json
+*.token
+
+# Downloaded native libraries (see app/build.gradle.kts)
+app/libs/
+
+# Published self-updates (tools/serve-updates.ps1)
+updates/
+
+# Downloaded models
+models/
+*.onnx
+*.tflite
+vosk-model-*/
+
+# Kotlin compiler caches
+.kotlin/
+
+# Loose screenshots from development sessions (keep curated ones under docs/)
+/*.png
