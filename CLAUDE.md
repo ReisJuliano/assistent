@@ -168,6 +168,9 @@ microphone stream can be analysed for music and loud sounds. The Portuguese smal
 - `./gradlew publishUpdate` builds and copies the APK to `updates/` (git-ignored) with `latest.json` (versionCode, SHA-256).
   `versionCode` = minutes since 2026-01-01, so every build is newer. Serve the folder with `tools/serve-updates.ps1`
   (port 8318) and set the app's `update.url` (Settings → Atualizações) to `http://<pc-ip>:8318/latest.json`.
+- Normal path: `./gradlew publishRelease` (needs `gh auth login`) creates GitHub release `v<versionName>` with the APK and
+  a `latest.json` pointing at that tag. The default `update.url` is `releases/latest/download/latest.json`, so devices
+  update from anywhere. Releases must be built on the machine holding the signing key (debug keystore today).
 - The app polls every `update.checkMinutes`, verifies SHA-256 and installs with `PackageInstaller`. The very first update of
   an ADB-installed app asks for one confirmation; afterwards the app is the installer of record and, with
   `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, updates silently. `MY_PACKAGE_REPLACED` reopens `MainActivity`

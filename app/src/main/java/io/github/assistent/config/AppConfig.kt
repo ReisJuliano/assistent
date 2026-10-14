@@ -314,10 +314,14 @@ data class RemindersConfig(
 @Serializable
 data class UpdateConfig(
     val enabled: Boolean = true,
-    /** e.g. http://192.168.0.10:8318/latest.json (dev PC) or a GitHub release asset URL. Empty = off. */
-    val url: String = "",
+    /** Manifest URL: the project's GitHub releases by default, or e.g. http://<pc-ip>:8318/latest.json. Empty = off. */
+    val url: String = DEFAULT_URL,
     val checkMinutes: Int = 10,
-)
+) {
+    companion object {
+        const val DEFAULT_URL = "https://github.com/ReisJuliano/assistent/releases/latest/download/latest.json"
+    }
+}
 
 /** Outgoing notifications: every URL receives `POST {event, data, ts}` for the listed events. */
 @Serializable

@@ -54,7 +54,7 @@ class ConfigStore(dir: File) {
     }
 
     companion object {
-        const val CURRENT_VERSION = 5
+        const val CURRENT_VERSION = 6
 
         /** Upgrades settings saved by older versions (defaults that changed on purpose). */
         fun migrate(cfg: AppConfig): AppConfig {
@@ -83,6 +83,10 @@ class ConfigStore(dir: File) {
             if (c.version < 5) {
                 // v5: make existing installations use the livelier idle cadence too.
                 c = c.copy(life = c.life.copy(idleSeconds = 120, minGapSeconds = 300, maxGapSeconds = 20 * 60))
+            }
+            if (c.version < 6 && (c.update.url.isBlank() || ":8318/" in c.update.url)) {
+                // v6: updates come from GitHub releases instead of the dev PC's LAN server.
+                c = c.copy(update = c.update.copy(url = UpdateConfig.DEFAULT_URL))
             }
             return c.copy(version = CURRENT_VERSION)
         }

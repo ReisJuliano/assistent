@@ -139,6 +139,41 @@ tasks.register("publishUpdate") {
     }
 }
 
+/**
+ * `./gradlew publishRelease` = publishUpdate + a GitHub release (tag `v<versionName>`) with the APK and a
+ * `latest.json` pointing at that tag's APK. Devices poll `releases/latest/download/latest.json`, so they update
+ * from anywhere without the dev PC. Needs the GitHub CLI (`gh auth login`). Repo: `-PreleaseRepo=owner/name`.
+ */
+tasks.register("publishRelease") {
+    dependsOn("publishUpdate")
+    doLast {
+        val repo = (findProperty("releaseRepo") as String?) ?: "ReisJuliano/assistent"
+        val name = android.defaultConfig.versionName
+        val tag = "v$name"
+        val out = rootProject.layout.projectDirectory.dir("updates").asFile
+        val manifest = File(out, "latest.json")
+        manifest.writeText(
+            manifest.readText().replace(
+                "\"apk\":\"assistent.apk\"",
+                "\"apk\":\"https://github.com/$repo/releases/download/$tag/assistent.apk\"",
+            ),
+        )
+        fun run(vararg cmd: String): String {
+            val p = ProcessBuilder(*cmd).directory(rootProject.projectDir).redirectErrorStream(true).start()
+            val text = p.inputStream.bufferedReader().readText()
+            check(p.waitFor() == 0) { "${cmd.first()} failed: $text" }
+            return text.trim()
+        }
+        val gh = listOf("C:/Program Files/GitHub CLI/gh.exe", "/usr/bin/gh", "/opt/homebrew/bin/gh")
+            .firstOrNull { File(it).exists() } ?: "gh"
+        val notes = runCatching { run("git", "log", "-1", "--format=%s") }.getOrDefault("Update")
+        run(
+            gh, "release", "create", tag, File(out, "assistent.apk").path, manifest.path,
+            "--repo", repo, "--title", "Assistent $name", "--notes", notes, "--latest",
+        )
+        println("Released $tag on github.com/$repo")
+    }
+}
 
 /** Downloads the sherpa-onnx Android AAR (on-device speaker recognition) once; it is too big to commit. */
 val downloadSherpaOnnx by tasks.registering {
