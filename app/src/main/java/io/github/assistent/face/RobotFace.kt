@@ -137,8 +137,19 @@ fun RobotFace(
                 val mimicTilt = sin(animator.time * 0.16f) > 0.88f
                 val mirrored = if (frame == null && mimicState.value && user.present && act == Activity.IDLE) {
                     val closedEye = EyeShape(height = 0.08f, radiusTop = 1f, radiusBottom = 1f)
-                    val lWink = user.leftEyeOpen < 0.25f && user.rightEyeOpen > 0.6f
-                    val rWink = user.rightEyeOpen < 0.25f && user.leftEyeOpen > 0.6f
+                    // The person winks → it winks back ~0.45 s later (an answer, not a mirror), for ~0.35 s.
+                    val lNow = user.leftEyeOpen < 0.25f && user.rightEyeOpen > 0.6f
+                    val rNow = user.rightEyeOpen < 0.25f && user.leftEyeOpen > 0.6f
+                    val nowMs = System.currentTimeMillis()
+                    if ((lNow || rNow) && !animator.userWinking && nowMs > animator.winkUntil + 600) {
+                        animator.winkAt = nowMs + 450
+                        animator.winkUntil = animator.winkAt + 350
+                        animator.winkLeft = lNow
+                    }
+                    animator.userWinking = lNow || rNow
+                    val winking = nowMs in animator.winkAt..animator.winkUntil
+                    val lWink = winking && animator.winkLeft
+                    val rWink = winking && !animator.winkLeft
                     base.copy(
                         tilt = base.tilt + if (mimicTilt && abs(user.tilt) > 7f) user.tilt * 0.55f else 0f,
                         left = if (lWink) closedEye else base.left,
@@ -282,6 +293,10 @@ internal class FaceAnimator {
     /** 0..1 white "light" level of the current light gag (not a spring: the gag script eases it). */
     var lit = 0f
     var shiftX = 0f
+    var winkAt = 0L
+    var winkUntil = 0L
+    var winkLeft = true
+    var userWinking = false
     var shiftY = 0f
     val lhx = Spring(-SHOULDER.x); val lhy = Spring(SHOULDER.y); val lha = Spring()
     val rhx = Spring(SHOULDER.x); val rhy = Spring(SHOULDER.y); val rha = Spring()

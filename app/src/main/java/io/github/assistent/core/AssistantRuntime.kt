@@ -95,7 +95,10 @@ class AssistantRuntime(
                 val after = config.current.wake.sleepAfterSeconds
                 val s = state.value
                 val limit = after * 1000L
-                if (after > 0 && s.activity == Activity.IDLE && s.scene == null && System.currentTimeMillis() - lastInteraction > limit) sleep()
+                // Alone and nothing happening → sleep. With someone around it stays awake, doing its own things.
+                if (after > 0 && s.activity == Activity.IDLE && s.scene == null && !someoneAround &&
+                    System.currentTimeMillis() - lastInteraction > limit && System.currentTimeMillis() - lastFaceAt > limit
+                ) sleep()
             }
         }
     }
@@ -199,8 +202,15 @@ class AssistantRuntime(
         }
     }
 
+    /** Last time a face was in view: someone around keeps it awake (it just lives its life next to them). */
+    @Volatile var lastFaceAt = 0L
+    /** When it last fell asleep (a person working nearby must not wake it right back up). */
+    @Volatile var sleptAt = 0L
+    val someoneAround get() = System.currentTimeMillis() - lastFaceAt < 2 * 60_000
+
     fun sleep() {
         if (state.value.activity == Activity.SLEEPING) return
+        sleptAt = System.currentTimeMillis()
         interruptSpeaking()
         setActivity(Activity.SLEEPING)
         scope.launch { sleepTracker.onSleep() }
@@ -611,6 +621,15 @@ class AssistantRuntime(
         if (state.value.activity != Activity.SLEEPING) return
         val now = System.currentTimeMillis()
         if (!force && now - lastMotionReaction < 45_000) { Log.d(TAG, "motion ignored (cooldown)"); return }
+        // Someone is around (working, walking by): no waking up for every little movement — at most a sleepy peek now and then.
+        if (!force && now - lastFaceAt < 10 * 60_000) {
+            if (now - lastMotionReaction > 10 * 60_000 && kotlin.random.Random.nextFloat() < 0.3f) {
+                lastMotionReaction = now
+                this.life.play(io.github.assistent.face.Scene.SLEEP_PEEK)
+            }
+            return
+        }
+        val roomWasEmpty = now - lastFaceAt > 10 * 60_000
         Log.d(TAG, "motion while sleeping -> look for a face")
         lastMotionReaction = now
         scope.launch {
@@ -622,7 +641,8 @@ class AssistantRuntime(
                 this@AssistantRuntime.life.play(io.github.assistent.face.Scene.SLEEP_PEEK)
                 return@launch
             }
-            if (kotlin.random.Random.nextFloat() < 0.25f) {
+            // A real scare only when someone suddenly shows up in an empty room.
+            if (roomWasEmpty && kotlin.random.Random.nextFloat() < 0.25f) {
                 wake(greet = false, interaction = false)
                 this@AssistantRuntime.life.play(io.github.assistent.face.Scene.WAKE_STARTLED)
                 delay(1_700)
@@ -671,6 +691,7 @@ class AssistantRuntime(
     fun onFace(g: Gaze) {
         val prev = gaze.value
         gaze.value = g
+        if (g.present) lastFaceAt = System.currentTimeMillis()
         if (!g.present) {
             state.update { it.copy(faceStatus = "no_face", faceIdentity = null, faceSimilarity = 0f) }
         } else if (!prev.present) {

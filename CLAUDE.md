@@ -142,8 +142,13 @@ data/                     Room: memories, reminders, people (v2, migration 1→2
 - Weather is shown as **moments** (`startWeatherMoment`): a few times a day for 1–2 min when the weather is notable,
   with its own scene (`WX_RAIN` umbrella, `WX_COLD` scarf + hot drink, `WX_HOT` sunglasses + sun). `life.weatherAlways`
   shows it permanently. The umbrella geometry (`UmbrellaGeo`) is shared with the rain renderer so drops stop at the canopy.
-- Sleep/wake rules: scares only come from sudden motion while asleep; it only *talks* when a real face is confirmed in
-  front of the camera; after waking up on its own it dozes off again if nobody interacts (`dozeOffIfAlone`).
+- Sleep/wake rules: **someone around keeps it awake** (a face seen in the last 2 min: it lives its life next to the
+  person instead of sleeping); it sleeps when alone for `wake.sleepAfterSeconds`. Asleep, motion with people around is
+  at most an occasional one-eye peek; a scare only when someone shows up after the room was empty for 10 min; waking by
+  face needs real eye contact for 3 s and never in the first 5 min of sleep (a person working next to it must not cause
+  a sleep → wake → scare loop). It only *talks* when a real face is confirmed; after waking on its own it dozes off
+  again if nobody interacts (`dozeOffIfAlone`).
+- Winks are answered, not mirrored: ~0.45 s after the person winks, it winks back for ~0.35 s.
 
 ### Social interactions (`core/Interactions.kt`)
 
