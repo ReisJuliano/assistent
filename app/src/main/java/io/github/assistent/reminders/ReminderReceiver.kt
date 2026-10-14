@@ -40,8 +40,16 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 graph.reminders.rescheduleAll()
                 graph.timers.rescheduleAll()
-                // Just updated itself: reopen the face (allowed from background with "display over other apps").
-                if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED && android.provider.Settings.canDrawOverlays(context)) {
+                // Just updated itself: reopen the face only if it was on screen before the update and the phone is
+                // still on and unlocked (allowed from background with "display over other apps"). Never wake/unlock it.
+                val prefs = context.getSharedPreferences("updater", Context.MODE_PRIVATE)
+                val wanted = prefs.getBoolean("relaunch", false)
+                prefs.edit().remove("relaunch").apply()
+                val power = context.getSystemService(android.os.PowerManager::class.java)
+                val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+                if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED && wanted && power.isInteractive &&
+                    !keyguard.isKeyguardLocked && android.provider.Settings.canDrawOverlays(context)
+                ) {
                     context.startActivity(
                         Intent(context, io.github.assistent.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )

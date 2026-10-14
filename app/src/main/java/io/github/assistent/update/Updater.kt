@@ -108,6 +108,9 @@ class Updater(
                 return@withContext "Arquivo corrompido (SHA-256 não confere)".also { _status.value = it }
             }
             _status.value = "Instalando versão ${manifest.versionName}…"
+            // Reopen after the update only if someone was looking at the face right now; a locked or dark phone stays so.
+            context.getSharedPreferences("updater", Context.MODE_PRIVATE).edit()
+                .putBoolean("relaunch", userIsLooking(context)).apply()
             install(file)
             "Instalando versão ${manifest.versionName}"
         }
@@ -143,6 +146,13 @@ class Updater(
     }
 }
 
+/** The face is on screen, the screen is on and unlocked: only then may the updater show anything. */
+fun userIsLooking(context: Context): Boolean {
+    val power = context.getSystemService(android.os.PowerManager::class.java)
+    val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+    return io.github.assistent.MainActivity.visible && power.isInteractive && !keyguard.isKeyguardLocked
+}
+
 /** Receives the install result; asks the user once if Android requires confirmation. */
 class UpdateStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -153,7 +163,10 @@ class UpdateStatusReceiver : BroadcastReceiver() {
                 @Suppress("DEPRECATION")
                 val confirm = (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else intent.getParcelableExtra(Intent.EXTRA_INTENT))
-                confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let { runCatching { context.startActivity(it) } }
+                confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let { c ->
+                    // Never pop a dialog over a locked/dark phone: leave a notification to confirm later.
+                    if (userIsLooking(context)) runCatching { context.startActivity(c) } else notifyConfirm(context, c)
+                }
             }
             PackageInstaller.STATUS_SUCCESS -> updater.onStatus("Atualizado!")
             else -> {
@@ -163,4 +176,18 @@ class UpdateStatusReceiver : BroadcastReceiver() {
             }
         }
     }
+}
+
+private fun notifyConfirm(context: Context, confirm: Intent) {
+    val nm = context.getSystemService(android.app.NotificationManager::class.java)
+    nm.createNotificationChannel(android.app.NotificationChannel("updates", "Atualizações", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+    val pi = PendingIntent.getActivity(context, 7001, confirm, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    val n = android.app.Notification.Builder(context, "updates")
+        .setSmallIcon(android.R.drawable.stat_sys_download_done)
+        .setContentTitle("Atualização pronta")
+        .setContentText("Toque para instalar a nova versão do robô")
+        .setContentIntent(pi)
+        .setAutoCancel(true)
+        .build()
+    runCatching { nm.notify(7001, n) }
 }

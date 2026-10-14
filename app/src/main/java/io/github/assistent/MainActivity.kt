@@ -93,6 +93,21 @@ class MainActivity : ComponentActivity() {
         updatePermsMissing = graph.config.current.update.let { it.enabled && it.url.isNotBlank() } && (!u.canInstall() || !u.canRelaunch())
     }
 
+    override fun onStart() {
+        super.onStart()
+        visible = true
+    }
+
+    override fun onStop() {
+        visible = false
+        super.onStop()
+    }
+
+    companion object {
+        /** The face is in the foreground (used by the updater to decide whether it may reopen it). */
+        @Volatile var visible = false
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()

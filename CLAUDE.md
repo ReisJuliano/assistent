@@ -198,8 +198,9 @@ Other scenes cannot interrupt a light scene.
   update from anywhere. Releases must be built on the machine holding the signing key (debug keystore today).
 - The app polls every `update.checkMinutes`, verifies SHA-256 and installs with `PackageInstaller`. The very first update of
   an ADB-installed app asks for one confirmation; afterwards the app is the installer of record and, with
-  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, updates silently. `MY_PACKAGE_REPLACED` reopens `MainActivity`
-  (needs "display over other apps"). Verified on the emulator (silent update + relaunch).
+  `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, updates silently. `MY_PACKAGE_REPLACED` reopens `MainActivity` **only if the
+  face was on screen before the update and the phone is still on and unlocked** (`userIsLooking`); a dark/locked phone
+  stays untouched, and the one-time confirmation becomes a notification instead of a dialog. Verified on the emulator.
 
 ### Recognition (`vision/People.kt`, `voice/VoiceIdentityManager.kt`)
 
