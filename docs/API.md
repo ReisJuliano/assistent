@@ -27,6 +27,23 @@ Painel web: `http://IP-DO-CELULAR:8765/`
 | GET | `/events` | | Stream SSE de eventos |
 | GET | `/ws?token=...` | | WebSocket para eventos em tempo real e mensagens `{"type":"chat","text":"..."}` |
 
+## Dispositivos e Android TV
+
+Cadastre o dispositivo em `lanDevices` via `/config`, com `name`, `mac`, `host`,
+`broadcast`, `adbPort` e, opcionalmente, `checkPort`. O mesmo cadastro e usado
+para Wake-on-LAN e ADB.
+
+| MÃ©todo | Rota | Corpo |
+|---|---|---|
+| GET | `/devices` | | Lista dispositivos cadastrados |
+| POST | `/devices/{id}/status` | | Consulta estado por ADB |
+| POST | `/devices/{id}/control` | `{"action":"play"}` ou `{"action":"open_app","value":"com.google.android.youtube.tv"}` |
+
+Acoes Android TV: `status`, `home`, `back`, `up`, `down`, `left`, `right`,
+`enter`, `play`, `pause`, `next`, `previous`, `volume_up`, `volume_down`,
+`mute`, `power` e `open_app`. A resposta so informa sucesso depois que o
+comando ADB foi aceito pelo dispositivo.
+
 ## Configuração
 
 | Método | Rota | |

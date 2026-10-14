@@ -38,6 +38,7 @@ import io.github.assistent.tools.AddEventTool
 import io.github.assistent.tools.CreateReminderTool
 import io.github.assistent.tools.DeleteEventTool
 import io.github.assistent.tools.DeviceTool
+import io.github.assistent.tools.TvControlTool
 import io.github.assistent.tools.FetchUrlTool
 import io.github.assistent.tools.ForgetTool
 import io.github.assistent.tools.ListRemindersTool
@@ -154,6 +155,7 @@ class AppGraph(context: Context) {
             StartQuizTool(llm, config),
             RecordQuizScoreTool(quizzes, presence),
             DeviceTool(context, config),
+            TvControlTool(config),
         ),
         config = config,
         http = http,

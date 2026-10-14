@@ -791,6 +791,7 @@ private fun LanDevicesSection(cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> 
     var broadcast by remember { mutableStateOf("255.255.255.255") }
     var host by remember { mutableStateOf("") }
     var checkPort by remember { mutableStateOf("") }
+    var adbPort by remember { mutableStateOf("5555") }
     Section("Dispositivos da rede") {
         Hint("Cadastre PCs ou TVs compatíveis com Wake-on-LAN. Depois diga: “acorde o PC do escritório”.")
         cfg.lanDevices.forEach { device ->
@@ -810,11 +811,12 @@ private fun LanDevicesSection(cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> 
             Field("Broadcast", broadcast) { broadcast = it }
             Field("IP/host para verificar (opcional)", host) { host = it }
             Field("Porta TCP para verificar (opcional)", checkPort, keyboard = KeyboardType.Number) { checkPort = it.filter(Char::isDigit) }
+            Field("Porta ADB da Android TV", adbPort, keyboard = KeyboardType.Number) { adbPort = it.filter(Char::isDigit) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = name.isNotBlank() && mac.isNotBlank(), onClick = {
                     val id = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_")
-                    up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == id } + io.github.assistent.config.LanDeviceConfig(id = id, name = name.trim(), mac = mac.trim(), broadcast = broadcast.trim(), host = host.trim(), checkPort = checkPort.toIntOrNull() ?: 0)) }
-                    name = ""; mac = ""; broadcast = "255.255.255.255"; host = ""; checkPort = ""; adding = false
+                    up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == id } + io.github.assistent.config.LanDeviceConfig(id = id, name = name.trim(), mac = mac.trim(), broadcast = broadcast.trim(), host = host.trim(), checkPort = checkPort.toIntOrNull() ?: 0, adbPort = adbPort.toIntOrNull() ?: 5555)) }
+                    name = ""; mac = ""; broadcast = "255.255.255.255"; host = ""; checkPort = ""; adbPort = "5555"; adding = false
                 }) { Text("Salvar") }
                 TextButton(onClick = { adding = false }) { Text("Cancelar") }
             }

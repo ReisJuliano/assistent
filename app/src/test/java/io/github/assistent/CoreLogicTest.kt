@@ -5,6 +5,7 @@ import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.Emotion
 import io.github.assistent.voice.WakeWordEngine
 import io.github.assistent.tools.WakeOnLan
+import io.github.assistent.tools.TvAdbWire
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -51,6 +52,10 @@ class CoreLogicTest {
     @Test fun wakeOnLanRejectsMalformedMac() {
         assertNull(WakeOnLan.parseMac("AA:BB:CC"))
         assertNull(WakeOnLan.parseMac("GG:BB:CC:DD:EE:FF"))
+    }
+
+    @Test fun androidTvAdbFramesServicesWithFourHexLength() {
+        assertEquals("000bshell:input", TvAdbWire.frame("shell:input").decodeToString())
     }
 
     @Test fun emotionTagIsParsedAndStripped() {

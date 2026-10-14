@@ -60,6 +60,7 @@ data class LanDeviceConfig(
     val kind: String = "pc",
     val host: String = "",
     val checkPort: Int = 0,
+    val adbPort: Int = 5555,
 )
 
 /** OpenAI-compatible endpoint. Default target: CLIProxyAPI with ChatGPT (Codex) OAuth. */

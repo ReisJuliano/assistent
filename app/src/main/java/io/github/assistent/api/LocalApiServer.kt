@@ -190,6 +190,23 @@ class LocalApiServer(private val g: AppGraph) {
                         put("currentPerson", AppJson.encodeToJsonElement(g.presence.currentPerson.value))
                     })
                 })
+                get("/devices", guard { call.respond(g.config.current.lanDevices) })
+                post("/devices/{id}/status", guard {
+                    val id = call.parameters["id"] ?: error("missing device id")
+                    val tool = g.tools.find("tv_control") ?: error("tv_control unavailable")
+                    val result = tool.execute(buildJsonObject { put("device", id); put("action", "status") })
+                    call.respond(buildJsonObject { put("result", result) })
+                })
+                post("/devices/{id}/control", guard {
+                    val id = call.parameters["id"] ?: error("missing device id")
+                    val body = call.receive<ToolBody>().args
+                    val tool = g.tools.find("tv_control") ?: error("tv_control unavailable")
+                    val args = buildJsonObject {
+                        put("device", id)
+                        body.forEach { (key, value) -> if (key != "device") put(key, value) }
+                    }
+                    call.respond(buildJsonObject { put("result", tool.execute(args)) })
+                })
                 post("/chat", guard {
                     val b = call.receive<ChatBody>()
                     val r = g.runtime.chat(b.text, b.speak)
