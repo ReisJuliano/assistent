@@ -272,9 +272,22 @@ private fun SettingsList(
         item {
             var result by remember { mutableStateOf<String?>(null) }
             Section("Cérebro (IA)") {
-                Hint("Endpoint compatível com OpenAI. Padrão: CLIProxyAPI com login ChatGPT (OAuth), ex. http://IP-DO-PC:8317/v1")
-                Field("Base URL", cfg.llm.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(llm = it.llm.copy(baseUrl = v.trim())) } }
-                Field("API key do proxy", cfg.llm.apiKey, secret = true) { v -> up { it.copy(llm = it.llm.copy(apiKey = v.trim())) } }
+                Segmented(listOf("chatgpt" to "Conta ChatGPT", "proxy" to "Proxy / API"), cfg.llm.provider) { v ->
+                    up { it.copy(llm = it.llm.copy(provider = v)) }
+                }
+                if (cfg.llm.provider == "chatgpt") {
+                    val chatStatus by graph.chatgpt.status.collectAsState()
+                    Hint("Usa o seu plano ChatGPT Plus/Pro direto (login oficial), sem proxy, em qualquer rede. Gasta a cota do Codex; limite o robô em chatgpt.com/settings/usage.")
+                    Hint(chatStatus)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { graph.chatgpt.startSignIn() }) { Text(if (graph.chatgpt.signedIn) "Entrar de novo" else "Entrar com ChatGPT") }
+                        if (graph.chatgpt.signedIn) TextButton(onClick = { graph.chatgpt.signOut() }) { Text("Sair") }
+                    }
+                } else {
+                    Hint("Endpoint compatível com OpenAI. Ex.: CLIProxyAPI no PC (http://IP-DO-PC:8317/v1), Gemini, Groq, Ollama…")
+                    Field("Base URL", cfg.llm.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(llm = it.llm.copy(baseUrl = v.trim())) } }
+                    Field("API key", cfg.llm.apiKey, secret = true) { v -> up { it.copy(llm = it.llm.copy(apiKey = v.trim())) } }
+                }
                 Field("Modelo", cfg.llm.model) { v -> up { it.copy(llm = it.llm.copy(model = v.trim())) } }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = {

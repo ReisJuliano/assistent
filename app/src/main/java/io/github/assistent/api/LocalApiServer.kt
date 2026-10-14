@@ -226,6 +226,15 @@ class LocalApiServer(private val g: AppGraph) {
                     val secs = (b["seconds"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 300
                     call.respond(buildJsonObject { put("result", if (on) g.runtime.lightOn(style, secs) else g.runtime.lightOff()) })
                 })
+                // "Sign in with ChatGPT": status / start the browser sign-in on the device / sign out.
+                get("/chatgpt", guard {
+                    call.respond(buildJsonObject { put("signedIn", g.chatgpt.signedIn); put("status", g.chatgpt.status.value) })
+                })
+                post("/chatgpt/signin", guard {
+                    g.chatgpt.startSignIn()
+                    call.respond(buildJsonObject { put("status", g.chatgpt.status.value) })
+                })
+                post("/chatgpt/signout", guard { g.chatgpt.signOut(); call.respond(ok()) })
                 post("/scene", guard {
                     val sc = Scene.of(call.receive<SceneBody>().scene) ?: error("unknown scene; GET /scenes")
                     when (sc.kind) {

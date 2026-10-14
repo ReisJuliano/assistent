@@ -311,7 +311,8 @@ class AssistantRuntime(
         } catch (e: Exception) {
             Log.w(TAG, "brain failed", e)
             state.update { it.copy(error = e.message) }
-            Reply(FALLBACK_ERROR, Emotion.SAD, emptyList())
+            val chatgpt = config.current.llm.provider == "chatgpt"
+            Reply(if (chatgpt) CHATGPT_ERROR else FALLBACK_ERROR, Emotion.SAD, emptyList())
         }
         currentReplyText = reply.text
         currentReplyEmotion = reply.emotion
@@ -627,6 +628,7 @@ class AssistantRuntime(
             "Opa, não vi você aí! 😅", "Ah, oi! Tava só descansando os olhos…", "Hã? Ah, oi! Precisa de algo?", "Zzz… hã? Oi! Tô acordado!",
             "Opa, chegou alguém! Bom te ver.", "Nossa, cochilei… que horas são?", "Hmm? Ah, oi! Pode falar.",
         )
+        private const val CHATGPT_ERROR = "Ops, não consegui falar com o ChatGPT. Confere a internet ou se a conta está conectada nas configurações."
         private const val FALLBACK_ERROR = "Ops, não consegui falar com meu cérebro agora. Confere a conexão com o proxy?"
     }
 }

@@ -50,6 +50,11 @@ data class SpotifyConfig(
 /** OpenAI-compatible endpoint. Default target: CLIProxyAPI with ChatGPT (Codex) OAuth. */
 @Serializable
 data class LlmConfig(
+    /**
+     * "proxy" = any OpenAI-compatible `/chat/completions` endpoint ([baseUrl], e.g. CLIProxyAPI);
+     * "chatgpt" = official "Sign in with ChatGPT" plan usage on the Responses API (no proxy, works on any network).
+     */
+    val provider: String = "proxy",
     val baseUrl: String = "http://192.168.0.10:8317/v1",
     val apiKey: String = "",
     val model: String = "gpt-6.1-sol",

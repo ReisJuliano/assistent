@@ -109,7 +109,8 @@ class AppGraph(context: Context) {
     val voiceIdentity = VoiceIdentityManager(context, config, http, db.speakerProfiles(), db.people())
     val alerts = AlertManager(db.alerts())
     val events = EventDispatcher(config, http, scope)
-    val llm = LlmClient(http)
+    val chatgpt = io.github.assistent.brain.ChatGptAuth(context, http, scope)
+    val llm = LlmClient(http).also { it.chatgpt = chatgpt }
     val phrases = PhrasePool(context.filesDir, config, llm, scope).also { Catchphrases.pool = it }
     val people = People(context, config, http, db.people(), scope).also { p -> scope.launch { p.migratePipeline() } }
     val registerFaceTool = RegisterFaceTool(people)

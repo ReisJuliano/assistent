@@ -163,6 +163,18 @@ awake, not cleared by conversation):
 microphone stream can be analysed for music and loud sounds. The Portuguese small model has the old flat layout
 (`final.mdl` at the root), so the model root is detected by `final.mdl` or `am/final.mdl`.
 
+### LLM providers (`brain/LlmClient.kt`, `ChatGptAuth.kt`, `ResponsesClient.kt`)
+
+- `llm.provider = "proxy"`: any OpenAI-compatible `/chat/completions` (CLIProxyAPI on a PC, Gemini, Groq, Ollama...).
+- `llm.provider = "chatgpt"`: official **Sign in with ChatGPT** plan usage for open-source/local apps
+  (developers.openai.com/siwc). OAuth+PKCE in the system browser, `client_id=dynamic_agent_client` on first registration
+  (then the issued `oaiapp_...`), stable `ext_agent_host_id`, loopback callback on `127.0.0.1:1455/auth/callback`
+  (listener open only while signing in), ID token verified against the JWKS. Tokens live in `filesDir/chatgpt-auth.json`,
+  never in `config.json` (so not shared over the mesh); each device signs in on its own. `ResponsesClient` translates
+  Chat Completions history/tools to `POST api.openai.com/v1/responses` (`store=false`, `stream=true`, no system items,
+  no sampling params). It spends the plan's Codex allowance; usage-limit errors pause calls via `LlmQuota`.
+- Never automate the chatgpt.com web chat (`backend-api`): against the terms and blocked by anti-bot checks.
+
 ### Screen light (`face/LightGag.kt`)
 
 The screen can work as a lamp (dark room, face recognition in low light, "acende a luz"): a gag scene

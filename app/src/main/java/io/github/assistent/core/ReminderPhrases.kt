@@ -24,7 +24,7 @@ class ReminderPhrases(private val config: ConfigStore, private val llm: LlmClien
     suspend fun line(r: ReminderEntity, owner: String, nag: Int = 0): String {
         if (r.phrase.isNotBlank()) return fill(r.phrase, owner, r.message)
         val cfg = config.current
-        if (cfg.reminders.aiPhrases && cfg.llm.baseUrl.isNotBlank() && !LlmQuota.blocked) {
+        if (cfg.reminders.aiPhrases && (cfg.llm.provider == "chatgpt" || cfg.llm.baseUrl.isNotBlank()) && !LlmQuota.blocked) {
             ai(r, owner, nag)?.let { return it }
         }
         return template(r.type, owner, r.message, nag, recent)

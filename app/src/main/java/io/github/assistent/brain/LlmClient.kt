@@ -88,8 +88,22 @@ sealed interface StreamEvent {
  * Claude…), OpenAI, OpenRouter, Ollama, LM Studio — anything speaking `/chat/completions`.
  */
 class LlmClient(private val http: OkHttpClient) {
+    /** Set by the app graph: the "Sign in with ChatGPT" account used when `llm.provider == "chatgpt"`. */
+    var chatgpt: ChatGptAuth? = null
+    private val responses by lazy { ResponsesClient(http) }
 
-    suspend fun complete(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): ChatMessage =
+    private fun usesChatGpt(cfg: LlmConfig) = cfg.provider == "chatgpt"
+
+    suspend fun complete(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): ChatMessage {
+        if (usesChatGpt(cfg)) {
+            var done: ChatMessage? = null
+            stream(cfg, messages, tools).collect { if (it is StreamEvent.Done) done = it.message }
+            return done ?: throw LlmException("LLM returned nothing")
+        }
+        return completeCompat(cfg, messages, tools)
+    }
+
+    private suspend fun completeCompat(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): ChatMessage =
         withContext(Dispatchers.IO) {
             LlmQuota.check()
             val body = AppJson.encodeToString(
@@ -110,7 +124,13 @@ class LlmClient(private val http: OkHttpClient) {
             }
         }
 
-    fun stream(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): Flow<StreamEvent> = flow {
+    fun stream(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): Flow<StreamEvent> =
+        if (usesChatGpt(cfg)) {
+            val auth = chatgpt ?: throw LlmException("ChatGPT sign-in unavailable")
+            responses.stream(cfg, messages, tools, auth)
+        } else streamCompat(cfg, messages, tools)
+
+    private fun streamCompat(cfg: LlmConfig, messages: List<ChatMessage>, tools: List<ToolSpec>): Flow<StreamEvent> = flow {
         LlmQuota.check()
         val body = AppJson.encodeToString(
             ChatRequest.serializer(),
@@ -148,6 +168,7 @@ class LlmClient(private val http: OkHttpClient) {
 
     /** `GET /models` — used by settings to list what the proxy exposes. */
     suspend fun listModels(cfg: LlmConfig): List<String> = withContext(Dispatchers.IO) {
+        if (usesChatGpt(cfg)) return@withContext responses.listModels(chatgpt ?: throw LlmException("ChatGPT sign-in unavailable"))
         val req = Request.Builder()
             .url(cfg.baseUrl.trimEnd('/') + "/models")
             .apply { if (cfg.apiKey.isNotBlank()) header("Authorization", "Bearer ${cfg.apiKey}") }
