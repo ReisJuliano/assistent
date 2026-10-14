@@ -329,9 +329,9 @@ class AssistantRuntime(
         return reply
     }
 
-    suspend fun say(text: String, emotion: Emotion? = null) {
-        wake(greet = false)
-        life.onConversation()
+    suspend fun say(text: String, emotion: Emotion? = null, spontaneous: Boolean = false) {
+        wake(greet = false, interaction = !spontaneous)
+        if (!spontaneous) life.onConversation()
         emotion?.let { setEmotion(it) }
         setActivity(Activity.SPEAKING)
         startBargeIn()
@@ -345,7 +345,7 @@ class AssistantRuntime(
         } finally {
             stopBargeIn()
             setActivity(Activity.IDLE)
-            touch()
+            if (!spontaneous) touch()
         }
     }
 
@@ -479,7 +479,7 @@ class AssistantRuntime(
         state.update { it.copy(bubble = text, bubbleAt = System.currentTimeMillis()) }
         if (!keepEmotion) setEmotion(emotion, 4_000)
         bubbleJob = scope.launch {
-            if (speak) say(text)
+            if (speak) say(text, spontaneous = true)
             delay(4_000L + text.length * 55L)
             state.update { it.copy(bubble = null) }
         }

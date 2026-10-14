@@ -61,11 +61,9 @@ class LifeDirector(
         }
     }
 
-    /** Any real interaction (talking, listening) interrupts hobbies and resets the idle clock. */
+    /** Talking with someone. Hobbies keep going (it can read and chat at the same time). */
     fun onConversation() {
         lastConversation = System.currentTimeMillis()
-        val sc = Scene.of(state.value.scene)
-        if (sc != null && sc.kind != Scene.Kind.WAKE && sc.kind != Scene.Kind.REACT) clear()
     }
 
     /** A direct touch replaces the current reaction immediately; speech and camera tracking do not. */
@@ -101,7 +99,7 @@ class LifeDirector(
         if (++mimicHits < 3) return
         mimicHits = 0
         val now = System.currentTimeMillis()
-        if (now - lastMimicAt < 15 * 60_000 || now - (mimicCooldown[scene] ?: 0L) < 60 * 60_000 || now - lastLifeEvent < 2 * 60_000) return
+        if (now - lastMimicAt < 15 * 60_000 || now - (mimicCooldown[scene] ?: 0L) < 60 * 60_000) return
         mimicCooldown[scene] = now
         lastMimicAt = now
         play(scene)
@@ -147,7 +145,7 @@ class LifeDirector(
             }
             val over = now - s.sceneStartedAt > current.seconds * 1000
             val interrupted = when (current.kind) {
-                Scene.Kind.AWAKE -> s.activity != Activity.IDLE
+                Scene.Kind.AWAKE -> s.activity == Activity.SLEEPING
                 Scene.Kind.DREAM -> s.activity != Activity.SLEEPING
                 Scene.Kind.WAKE, Scene.Kind.REACT -> s.activity == Activity.SLEEPING
             }
@@ -155,50 +153,56 @@ class LifeDirector(
             return
         }
         if (!cfg.enabled) return
+        // No queues, timers or budgets: every half second each kind of thing just has a small random chance.
+        // On average a hobby every (min+max)/2 of the configured gap, a comment every ~20 min, weather now and then.
         when (s.activity) {
-            Activity.IDLE -> {
-                val cadence = (cfg.minGapSeconds.coerceAtLeast(60) * 1000L)
-                val quiet = now - lastConversation > cfg.idleSeconds * 1000L && now - lastLifeEvent > cadence && s.bubble == null
-                if (quiet && cfg.weatherEffects && now >= nextWeatherAt && weatherScene(s.ambient) != null) {
-                    // A few times a day: the weather "happens" for a minute or two, with its own animation.
-                    nextWeatherAt = now + gap(3 * 3600, 6 * 3600)
-                    startWeatherMoment()
-                } else if (quiet && now >= nextQuipAt) {
-                    // Random little comment to nobody in particular.
-                    nextQuipAt = now + gap(12 * 60, 30 * 60)
-                    lastLifeEvent = now
-                    val (cat, examples) = timeQuips(LocalTime.now())
-                    onQuip(Catchphrases.line(cat, examples), false)
-                } else if (quiet && now >= nextSceneAt) {
-                    pickAwake(cfg.scenes)?.let { sc ->
-                        play(sc)
-                        nextSceneAt = now + (sc.seconds * 1000).toLong() + gap(cfg.minGapSeconds, cfg.maxGapSeconds)
-                    }
-                }
-            }
             Activity.SLEEPING -> {
-                if (nextSelfWakeAt == 0L) nextSelfWakeAt = now + gap(2 * 3600, 4 * 3600)
-                if (cfg.selfWake && now >= nextSelfWakeAt) {
-                    nextSelfWakeAt = 0L
-                    lastLifeEvent = now
-                    onSelfWake()
-                } else if (cfg.dreams && now >= nextDreamAt) {
-                    if (nextDreamAt == 0L) {
-                        nextDreamAt = now + gap(10 * 60, 30 * 60) // let it fall asleep first
-                    } else {
-                        val dreams = Scene.entries.filter {
-                            it.kind == Scene.Kind.DREAM && it != Scene.SLEEP_PEEK && it !in recentScenes && (cfg.scenes.isEmpty() || it.key in cfg.scenes)
-                        }
-                        dreams.randomOrNull()?.let { sc ->
-                            play(sc)
-                            nextDreamAt = now + (sc.seconds * 1000).toLong() + gap(20 * 60, 60 * 60)
-                        }
-                    }
-                }
+                if (cfg.selfWake && chance(3 * 3600)) onSelfWake()
+                else if (cfg.dreams && current == null && chance(25 * 60)) dreamScene(cfg.scenes)?.let(::play)
             }
-            else -> Unit
+            Activity.LISTENING -> Unit // someone is talking to it
+            else -> {
+                val avg = ((cfg.minGapSeconds + cfg.maxGapSeconds) / 2).coerceAtLeast(30)
+                if (current == null && s.activity == Activity.IDLE && chance(avg)) pickAwake(cfg.scenes)?.let(::play)
+                if (s.bubble == null && chance(20 * 60)) {
+                    val (cat, examples) = weatherQuip(s.ambient)?.takeIf { Random.nextBoolean() } ?: timeQuips(LocalTime.now())
+                    onQuip(Catchphrases.line(cat, examples), false)
+                }
+                if (cfg.weatherEffects && current == null && chance(3 * 3600) && weatherScene(s.ambient) != null) startWeatherMoment()
+            }
         }
-        if (s.activity != Activity.SLEEPING) { nextDreamAt = 0L; nextSelfWakeAt = 0L }
+    }
+
+    /** True with probability matching "about once every [everySeconds]" for a 0.5 s tick. */
+    private fun chance(everySeconds: Int) = Random.nextFloat() < 0.5f / everySeconds.coerceAtLeast(1)
+
+    private fun dreamScene(allowed: List<String>) = Scene.entries.filter {
+        it.kind == Scene.Kind.DREAM && it != Scene.SLEEP_PEEK && it !in recentScenes && (allowed.isEmpty() || it.key in allowed)
+    }.randomOrNull()
+
+    /**
+     * Comments about the weather outside right now ("chuvinha boa pra dormir, né?"). AI-written in batches of 10
+     * per kind of weather; each line is said once, then a new batch is written.
+     */
+    private fun weatherQuip(a: Ambient): Pair<String, List<String>>? {
+        val t = a.temperature ?: return null
+        return when {
+            a.condition in setOf("rain", "drizzle", "storm") -> "weather_rain" to listOf(
+                "Chuvinha boa pra dormir, né?", "Esse barulhinho de chuva dá um sono…", "Dia perfeito pra um chá e um cobertor.",
+                "Lá fora tá chovendo, aqui dentro tá quentinho.",
+            )
+            a.condition == "snow" || t <= 13f -> "weather_cold" to listOf(
+                "Brrr, que friozinho!", "Tempo de chocolate quente, hein?", "Meus circuitos estão tremendo de frio.",
+            )
+            t >= 30f -> "weather_hot" to listOf(
+                "Que calor! Tô derretendo aqui.", "Alguém liga um ventilador pra mim?", "Hoje é dia de sorvete, certeza.",
+            )
+            a.condition == "fog" -> "weather_fog" to listOf("Que neblina lá fora, parece filme de mistério.", "Hoje o mundo acordou embaçado.")
+            a.condition == "clear" && a.isDay && t in 20f..28f -> "weather_nice" to listOf(
+                "Que dia bonito lá fora!", "Solzinho gostoso hoje, hein?", "Dia perfeito pra dar uma volta.",
+            )
+            else -> null
+        }
     }
 
     /** Idle comments that fit the time of day: sleepy mornings, hungry around lunch, slow afternoons, cosy nights. */

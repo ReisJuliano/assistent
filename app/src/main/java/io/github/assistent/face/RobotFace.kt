@@ -112,7 +112,7 @@ fun RobotFace(
                 // sleeping, wake-up reactions while awake (they may overlap the start of listening).
                 val (sc, startedAt) = sceneState.value
                 val applies = when (sc?.kind) {
-                    Scene.Kind.AWAKE -> act == Activity.IDLE
+                    Scene.Kind.AWAKE -> act != Activity.SLEEPING
                     Scene.Kind.DREAM -> act == Activity.SLEEPING
                     Scene.Kind.WAKE -> act != Activity.SLEEPING
                     Scene.Kind.REACT -> act != Activity.SLEEPING && (sc != Scene.WAVE_BACK || act == Activity.IDLE)

@@ -74,7 +74,7 @@ class PhrasePool(
     private fun markUsed(category: String, line: String) = scope.launch {
         lock.withLock {
             // Facts are one-shot: once told, drop them. Other lines can come back later.
-            if (category == "fact") {
+            if (category == "fact" || category.startsWith("weather_")) {
                 store = store.copy(
                     lines = store.lines + (category to (store.lines[category].orEmpty() - line)),
                     used = store.used + (category to (store.used[category].orEmpty() + line).takeLast(300)),
@@ -101,7 +101,7 @@ class PhrasePool(
                     append("Escreva 10 falas NOVAS e variadas em ${cfg.personality.language} para esta situação: $desc. ")
                     append("Cada fala com no máximo 14 palavras, natural, engraçadinha, como alguém vivo falaria. ")
                     if (examples.any { "{n}" in it }) append("Use {n} onde entraria o nome da pessoa (em todas as falas). ")
-                    append("Pode usar no máximo 1 emoji em algumas. Uma fala por linha, sem numeração, sem aspas.\n")
+                    append("Sem emojis. Uma fala por linha, sem numeração, sem aspas.\n")
                     append("Exemplos do estilo:\n")
                     examples.shuffled().take(6).forEach { append("- $it\n") }
                     if (avoid.isNotEmpty()) {
@@ -180,6 +180,11 @@ class PhrasePool(
             "bored" to "o robô está entediado sem nada pra fazer",
             "anyone_there" to "o robô acordou sozinho, sem ninguém por perto, e pergunta se tem alguém ali ou fala sozinho",
             "quip_morning" to "comentário sozinho de manhã cedo, ainda com sono, querendo café",
+            "weather_rain" to "um comentário curto e aconchegante sobre a chuva lá fora agora (dormir, chá, cobertor, filme)",
+            "weather_cold" to "um comentário curto sobre o frio que está fazendo agora",
+            "weather_hot" to "um comentário curto sobre o calor que está fazendo agora",
+            "weather_fog" to "um comentário curto sobre a neblina lá fora",
+            "weather_nice" to "um comentário curto e animado sobre o dia bonito e ensolarado lá fora",
             "quip_lunch" to "comentário sozinho perto da hora do almoço, com fome, falando de comida",
             "quip_afternoon" to "comentário sozinho no meio da tarde, com moleza pós-almoço",
             "quip_evening" to "comentário sozinho no começo da noite, relaxando depois do dia",

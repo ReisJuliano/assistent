@@ -129,9 +129,12 @@ data/                     Room: memories, reminders, people (v2, migration 1→2
 
 ### Rhythm of the day, rarity and real-life rules (`core/LifeDirector.kt`)
 
-- Life must feel spontaneous but **rare**: hobbies only after `life.idleSeconds` without conversation, then a random
-  gap of `minGapSeconds..maxGapSeconds` (5–20 min by default), never one of the last 4 scenes, and at least 90 s
-  between any two "alive" events (scene, quip, wake-up). Don't add anything that fires on a short fixed timer.
+- Life is **random, not scheduled** (owner's explicit wish): every 0.5 s tick each kind of thing has a small chance
+  (`chance(everySeconds)`): a hobby about once per `(minGap+maxGap)/2`, a comment about every 20 min (half of them about
+  the weather when it is notable: `weather_*` phrase categories, one-shot AI batches), weather moments every few hours.
+  No queues, budgets or "N seconds since the last event" gates. Several things may overlap: hobbies keep going while
+  it talks, comments can pop up during a hobby. Spontaneous speech (`say(spontaneous = true)`) never counts as a
+  conversation, and it never *speaks* to an empty room.
 - `pickAwake` encodes real-life rules: no dog walk in rain/fog/late night, stars only on clear nights, juice when hot,
   tea when cold, no workout in the heat, snacks around lunch/dinner, sleepier choices at night.
 - Time of day: idle face gets heavier eyelids at night/early morning (`daytimeMood` in `RobotFace.kt`), the sleep timer

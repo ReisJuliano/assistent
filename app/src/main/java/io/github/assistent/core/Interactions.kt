@@ -42,14 +42,7 @@ class Interactions(
     // Automatic reactions have a soft budget; direct actions remain responsive.
     private val autoReactions = ArrayDeque<Long>()
 
-    private fun budget(): Boolean {
-        val now = System.currentTimeMillis()
-        while (autoReactions.isNotEmpty() && now - autoReactions.first() > 3 * 3600_000L) autoReactions.removeFirst()
-        if (autoReactions.size >= 8) return false
-        if (autoReactions.isNotEmpty() && now - autoReactions.last() < 2 * 60_000) return false
-        autoReactions.addLast(now)
-        return true
-    }
+    private fun budget(): Boolean = true
 
     private val state get() = runtime.state.value
     private val awake get() = state.activity != Activity.SLEEPING
@@ -95,53 +88,24 @@ class Interactions(
         if (ready("dance_line", 10 * 60_000)) react(Scene.DANCE, "dance", DANCE, 1_500) else runtime.life.play(Scene.DANCE)
     }
 
-    // Ambient sound analysis (fed by the wake-word audio loop, 50 ms frames).
-    private val env = FloatArray(160) // 8 s of RMS
-    private var envPos = 0
-    private var envFilled = 0
-    private var noise = 0.01f
     private var prevRms = 0f
-    private var musicWindows = 0
-    private var frames = 0
+
+    private val music = MusicDetector()
+    @Volatile private var musicHeardAt = 0L
+
+    /** True while music has been heard in the room recently: wake phrases need to be clearer then. */
+    val musicPlaying get() = System.currentTimeMillis() - musicHeardAt < 20_000
 
     fun onAudioLevel(rms: Float) {
         // Sudden loud sound (clap, door) → a little start.
-        if (rms > maxOf(0.35f, noise * 10f) && prevRms < rms / 5f) onLoudSound()
+        if (rms > maxOf(0.35f, music.noise * 10f) && prevRms < rms / 5f) onLoudSound()
         prevRms = rms
-        noise = if (rms < noise) noise * 0.9f + rms * 0.1f else noise * 0.999f + rms * 0.001f
-        env[envPos] = rms
-        envPos = (envPos + 1) % env.size
-        envFilled = minOf(env.size, envFilled + 1)
-        if (++frames % 40 != 0 || envFilled < env.size) return // analyze every 2 s
-        val bpm = musicBpm()
-        if (bpm != null) android.util.Log.d("Interactions", "room music? bpm=$bpm windows=$musicWindows roomMusic=${config.current.life.roomMusic}")
-        musicWindows = if (bpm != null) musicWindows + 1 else 0
-        if (musicWindows >= 2 && bpm != null) {
+        music.push(rms)?.let { bpm ->
+            musicHeardAt = System.currentTimeMillis()
             Life.danceBpm = bpm
+            android.util.Log.d("Interactions", "room music bpm=$bpm")
             onMusic(phone = false)
         }
-    }
-
-    /** Music ≈ sustained sound (few silent gaps, unlike speech) with a regular beat. Returns the BPM or null. */
-    private fun musicBpm(): Float? {
-        val n = env.size
-        val x = FloatArray(n) { env[(envPos + it) % n] }
-        val mean = x.average().toFloat()
-        if (mean < maxOf(0.02f, noise * 3f)) return null
-        val sustained = x.count { it > mean * 0.45f } / n.toFloat()
-        if (sustained < 0.8f) return null
-        val onset = FloatArray(n) { if (it == 0) 0f else maxOf(0f, x[it] - x[it - 1]) }
-        val om = onset.average().toFloat()
-        var bestLag = 0
-        var best = 0f
-        val norm = onset.sumOf { ((it - om) * (it - om)).toDouble() }.toFloat().coerceAtLeast(1e-6f)
-        for (lag in 7..20) { // 0.35–1.0 s per beat
-            var s = 0f
-            for (i in lag until n) s += (onset[i] - om) * (onset[i - lag] - om)
-            val c = s / norm
-            if (c > best) { best = c; bestLag = lag }
-        }
-        return if (best > 0.25f) 60f / (bestLag * 0.05f) else null
     }
 
     private fun onLoudSound() {
@@ -248,13 +212,12 @@ class Interactions(
             stareSince = 0L
             closeSince = 0L
             if (noFaceSince == 0L) noFaceSince = now
-            if (now - noFaceSince > 4_000L && idle && state.scene == null && ready("alone_camera", 3 * 60_000) && budget()) {
+            // Nobody around for a long while after someone left: a silent thought bubble, never speech to an empty room.
+            if (now - noFaceSince > 20 * 60_000L && lastFaceAt > 0 && now - lastFaceAt < 2 * 3600_000L && idle &&
+                state.scene == null && ready("alone_camera", 2 * 3600_000L)
+            ) {
                 noFaceSince = now
-                runtime.showBubble(
-                    Catchphrases.line("alone_camera", ALONE_CAMERA),
-                    speak = true,
-                    emotion = Emotion.CONFUSED,
-                )
+                runtime.showBubble(Catchphrases.line("alone_camera", ALONE_CAMERA), speak = false, keepEmotion = true)
             }
             onFaceGone()
             return
