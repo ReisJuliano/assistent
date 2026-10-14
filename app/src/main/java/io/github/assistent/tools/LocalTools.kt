@@ -12,6 +12,7 @@ import io.github.assistent.data.MemoryRepository
 import io.github.assistent.reminders.ReminderScheduler
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -193,7 +194,7 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
         val mac = WakeOnLan.parseMac(device.mac) ?: return@withContext "invalid MAC for ${device.name}"
         runCatching {
             WakeOnLan.send(mac, device.broadcast, device.port)
-            val status = if (device.host.isBlank()) "status unknown; configure its IP/host to verify" else checkReachability(device.host, device.checkPort)
+            val status = if (device.host.isBlank()) "status unknown; configure its IP/host to verify" else waitForReachability(device.host, device.checkPort)
             "wake-on-LAN sent to ${device.name}; $status"
         }.getOrElse { "wake-on-LAN failed for ${device.name}: ${it.message}" }
     }
@@ -206,12 +207,21 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
     }
 
     private fun checkReachability(host: String, port: Int): String {
-        val online = runCatching {
+        return if (isReachable(host, port)) "online" else "offline or still booting"
+    }
+
+    private suspend fun waitForReachability(host: String, port: Int): String {
+        repeat(8) {
+            if (isReachable(host, port)) return "online"
+            delay(1_500)
+        }
+        return "offline or still booting"
+    }
+
+    private fun isReachable(host: String, port: Int): Boolean = runCatching {
             if (port > 0) Socket().use { it.connect(InetSocketAddress(host, port), 1_200); true }
             else InetAddress.getByName(host).isReachable(1_200)
         }.getOrDefault(false)
-        return if (online) "online" else "offline or still booting"
-    }
 
     private fun torch(on: Boolean): String {
         val cm = context.getSystemService(CameraManager::class.java)
