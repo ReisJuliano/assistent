@@ -162,7 +162,7 @@ fun RobotFace(
                 animator.sceneSeed = startedAt
                 animator.step(
                     dt, (frame?.params ?: mirrored).withRoundness(cfg.eyeRoundness / 0.45f), act, emo,
-                    gazeState.value, levelState.value(), cfg, frame?.gaze, frame?.dx ?: 0f, frame?.dy ?: 0f, frame?.stiffness,
+                    gazeState.value, levelState.value(), cfg, frame?.gaze ?: lookAway(animator, user.present, act), frame?.dx ?: 0f, frame?.dy ?: 0f, frame?.stiffness,
                 )
                 tick = now
             }
@@ -184,6 +184,26 @@ fun RobotFace(
             drawContext.canvas.restore()
         }
     }
+}
+
+/**
+ * With someone in front it doesn't just stare: every 5–14 s it glances somewhere else for 1–2.5 s (around the room, at
+ * its "desk", up thinking), then back to the person. Null = follow the person / idle motion as usual.
+ */
+private fun lookAway(a: FaceAnimator, present: Boolean, act: Activity): Offset? {
+    if (!present || act != Activity.IDLE) return null
+    val now = System.currentTimeMillis()
+    if (now >= a.nextLookAwayAt && a.lookAwayUntil < now) {
+        if (a.nextLookAwayAt != 0L) {
+            a.lookAwayUntil = now + kotlin.random.Random.nextLong(1_000, 2_500)
+            a.lookAwayTarget = Offset(
+                (if (kotlin.random.Random.nextBoolean()) 1f else -1f) * kotlin.random.Random.nextDouble(0.45, 0.9).toFloat(),
+                kotlin.random.Random.nextDouble(-0.5, 0.45).toFloat(),
+            )
+        }
+        a.nextLookAwayAt = now + kotlin.random.Random.nextLong(5_000, 14_000)
+    }
+    return if (now < a.lookAwayUntil) a.lookAwayTarget else null
 }
 
 fun parseHexColor(hex: String): Color = runCatching {
@@ -293,6 +313,9 @@ internal class FaceAnimator {
     /** 0..1 white "light" level of the current light gag (not a spring: the gag script eases it). */
     var lit = 0f
     var shiftX = 0f
+    var nextLookAwayAt = 0L
+    var lookAwayUntil = 0L
+    var lookAwayTarget = Offset.Zero
     var winkAt = 0L
     var winkUntil = 0L
     var winkLeft = true

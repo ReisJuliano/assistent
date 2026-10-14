@@ -332,7 +332,8 @@ class LocalApiServer(private val g: AppGraph) {
                     })
                 })
                 post("/update/check", guard { call.respond(buildJsonObject { put("result", g.updater.checkAndInstall()) }) })
-                post("/motion", guard { g.runtime.onMotion(force = true); call.respond(ok()) })
+                // Simulates camera motion (asleep: at most a peek; it never wakes up from motion).
+                post("/motion", guard { g.runtime.onMotion(); call.respond(ok()) })
                 // AI-written phrase pools (greetings, scares, quips, facts, sleep talk…)
                 get("/phrases", guard {
                     call.respond(buildJsonObject {

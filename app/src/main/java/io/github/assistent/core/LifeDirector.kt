@@ -43,6 +43,8 @@ class LifeDirector(
 
     /** Asks the runtime to wake up on its own (no one around). */
     var onSelfWake: () -> Unit = {}
+    /** Falls asleep on its own (a nap), even in the middle of a hobby. */
+    var onNap: () -> Unit = {}
     private var nextDreamAt = 0L
     private var geo: Triple<String, Double, Double>? = null
     private var nextQuipAt = System.currentTimeMillis() + gap(8 * 60, 20 * 60)
@@ -113,6 +115,7 @@ class LifeDirector(
         state.update { it.copy(scene = scene.key, sceneStartedAt = System.currentTimeMillis()) }
         lastLifeEvent = System.currentTimeMillis()
         recentScenes.addLast(scene)
+        lastPlayed[scene] = System.currentTimeMillis()
         while (recentScenes.size > 10) recentScenes.removeFirst()
         events.emit("scene", JsonPrimitive(scene.key))
         // Some scenes say something so they read clearly.
@@ -157,18 +160,33 @@ class LifeDirector(
         // On average a hobby every (min+max)/2 of the configured gap, a comment every ~20 min, weather now and then.
         when (s.activity) {
             Activity.SLEEPING -> {
-                if (cfg.selfWake && chance(3 * 3600)) onSelfWake()
+                if (cfg.selfWake && chance(50 * 60)) onSelfWake()
                 else if (cfg.dreams && current == null && chance(25 * 60)) dreamScene(cfg.scenes)?.let(::play)
             }
             Activity.LISTENING -> Unit // someone is talking to it
             else -> {
-                val avg = ((cfg.minGapSeconds + cfg.maxGapSeconds) / 2).coerceAtLeast(30)
-                if (current == null && s.activity == Activity.IDLE && chance(avg)) pickAwake(cfg.scenes)?.let(::play)
+                // Next hobby: a random moment between the configured min and max gap after the last one (if it is busy
+                // talking/listening at that moment, the hobby simply waits until it is idle again).
+                // Settings changed (e.g. a shorter gap): draw again with the new range.
+                val gapKey = cfg.minGapSeconds to cfg.maxGapSeconds
+                if (gapKey != hobbyGapKey) { hobbyGapKey = gapKey; nextHobbyAt = 0L }
+                if (nextHobbyAt == 0L) nextHobbyAt = now + gap(cfg.minGapSeconds.coerceAtLeast(30), cfg.maxGapSeconds.coerceAtLeast(cfg.minGapSeconds + 1))
+                if (current == null && s.activity == Activity.IDLE && now >= nextHobbyAt) {
+                    pickAwake(cfg.scenes)?.let { sc ->
+                        play(sc)
+                        nextHobbyAt = now + (sc.seconds * 1000).toLong() +
+                            gap(cfg.minGapSeconds.coerceAtLeast(30), cfg.maxGapSeconds.coerceAtLeast(cfg.minGapSeconds + 1))
+                    }
+                }
                 if (s.bubble == null && chance(20 * 60)) {
                     val (cat, examples) = weatherQuip(s.ambient)?.takeIf { Random.nextBoolean() } ?: timeQuips(LocalTime.now())
                     onQuip(Catchphrases.line(cat, examples), false)
                 }
                 if (cfg.weatherEffects && current == null && chance(3 * 3600) && weatherScene(s.ambient) != null) startWeatherMoment()
+                // A random nap now and then (reading and nodding off…), never in the middle of a conversation.
+                if (s.activity == Activity.IDLE && now - lastConversation > 2 * 60_000 && (current == null || current.kind == Scene.Kind.AWAKE) &&
+                    chance((45 * 60 / sleepFactor()).toInt())
+                ) onNap()
             }
         }
     }
@@ -229,6 +247,11 @@ class LifeDirector(
      * Weighted by context, with real-life rules: no dog walk in the rain or late at night, stars only on a clear
      * night, hot drinks when cold, juice when hot, no workout in the heat, movies and books on rainy days…
      */
+    @Volatile private var nextHobbyAt = 0L
+    private var hobbyGapKey = 0 to 0
+    /** When each hobby last played: ones not seen for hours get a big boost, so every activity really shows up. */
+    private val lastPlayed = java.util.concurrent.ConcurrentHashMap<Scene, Long>()
+
     private fun pickAwake(allowed: List<String>): Scene? {
         val hour = LocalTime.now().hour
         val amb = state.value.ambient
@@ -265,6 +288,10 @@ class LifeDirector(
                 }
                 w
             }.filterValues { it > 0f }
+            .mapValues { (sc, w) ->
+                val since = System.currentTimeMillis() - (lastPlayed[sc] ?: 0L)
+                w * when { since > 6 * 3600_000L -> 4f; since > 2 * 3600_000L -> 2f; else -> 1f }
+            }
         val total = weights.values.sum()
         if (total <= 0f) return null
         var r = Random.nextFloat() * total

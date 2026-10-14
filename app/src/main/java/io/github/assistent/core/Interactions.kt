@@ -254,19 +254,9 @@ class Interactions(
 
     fun onGaze(g: Gaze) {
         val now = System.currentTimeMillis()
-        // Someone looking at the sleeping robot for a few seconds wakes it up (sleepy, then happy to see them).
+        // Asleep: being looked at doesn't wake it (only interaction does) — at most a sleepy peek now and then.
         if (state.activity == Activity.SLEEPING) {
-            // Only someone actually looking at it (not a person working next to it) wakes it up, and not right
-            // after it fell asleep.
-            val lookingAtMe = g.present && abs(g.x) < 0.35f && abs(g.y) < 0.45f && abs(g.yaw) < 15f && g.size > 0.1f
-            if (!lookingAtMe) { sleepFaceSince = 0L; return }
-            if (now - runtime.sleptAt < 5 * 60_000) return
-            if (sleepFaceSince == 0L) sleepFaceSince = now
-            if (now - sleepFaceSince > 3_000 && ready("wake_by_face", 10 * 60_000)) {
-                android.util.Log.d("Interactions", "face in front of sleeping robot -> wake")
-                sleepFaceSince = 0L
-                runtime.wake(greet = true)
-            }
+            if (g.present && ready("sleep_face_peek", 8 * 60_000) && Random.nextFloat() < 0.3f) runtime.life.play(Scene.SLEEP_PEEK)
             return
         }
         sleepFaceSince = 0L

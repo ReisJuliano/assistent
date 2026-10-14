@@ -142,12 +142,14 @@ data/                     Room: memories, reminders, people (v2, migration 1→2
 - Weather is shown as **moments** (`startWeatherMoment`): a few times a day for 1–2 min when the weather is notable,
   with its own scene (`WX_RAIN` umbrella, `WX_COLD` scarf + hot drink, `WX_HOT` sunglasses + sun). `life.weatherAlways`
   shows it permanently. The umbrella geometry (`UmbrellaGeo`) is shared with the rain renderer so drops stop at the canopy.
-- Sleep/wake rules: **someone around keeps it awake** (a face seen in the last 2 min: it lives its life next to the
-  person instead of sleeping); it sleeps when alone for `wake.sleepAfterSeconds`. Asleep, motion with people around is
-  at most an occasional one-eye peek; a scare only when someone shows up after the room was empty for 10 min; waking by
-  face needs real eye contact for 3 s and never in the first 5 min of sleep (a person working next to it must not cause
-  a sleep → wake → scare loop). It only *talks* when a real face is confirmed; after waking on its own it dozes off
-  again if nobody interacts (`dozeOffIfAlone`).
+- Sleep/wake rules (owner's wish: a calm, random cycle): it may sleep with people around. Each time it wakes it draws
+  how long it stays up without interaction (0.4×–2.5× `wake.sleepAfterSeconds`, shorter at night); it may also nap at
+  random (even in the middle of a hobby) and wake up on its own now and then. **Asleep, nothing but an interaction wakes
+  it** (its name, a touch, petting, the app): movement and faces only cause an occasional one-eye peek/look around.
+  It only *talks* when a real face is confirmed; after waking on its own it dozes off again if nobody interacts.
+- Hobbies: the next one is drawn between `minGapSeconds` and `maxGapSeconds` after the last (re-drawn when the setting
+  changes); hobbies not seen for 2/6 hours get ×2/×4 weight so every activity (coffee…) really shows up. With someone
+  in front it doesn't just stare: every 5–14 s it glances elsewhere for 1–2.5 s (`lookAway` in `RobotFace.kt`).
 - Winks are answered, not mirrored: ~0.45 s after the person winks, it winks back for ~0.35 s.
 
 ### Social interactions (`core/Interactions.kt`)
