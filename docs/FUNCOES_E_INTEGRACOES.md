@@ -23,6 +23,18 @@
 - `[ ]` Controle de luzes, tomadas, sensores, persianas, fechaduras, câmeras e climatização.
 - `[ ]` Tailscale para controle remoto sem abrir portas na internet.
 
+## Desenvolvimento e presença
+
+- `[ ]` Extensão oficial para VS Code integrada ao assistente.
+- `[ ]` Presença rica no estilo Discord: projeto, arquivo, linguagem, branch e tempo codando.
+- `[ ]` Atualização em tempo real do status enquanto a pessoa programa.
+- `[ ]` Estados de codificação: escrevendo, depurando, compilando, testes, pausado e ausente.
+- `[ ]` Boneco em cena animando que está codando em um teclado.
+- `[ ]` Boneco reagindo a build concluído, erro de compilação, teste falhando e deploy.
+- `[ ]` Configurar projeto, pessoa, cômodo e privacidade diretamente na extensão.
+- `[ ]` Desativar presença, ocultar nomes de arquivos e definir modo privado.
+- `[ ]` Presença opcional publicada no Discord com o mesmo estado do assistente.
+
 ## TV, filmes e vídeos
 
 - `[ ]` “Ligue a TV da sala”.
