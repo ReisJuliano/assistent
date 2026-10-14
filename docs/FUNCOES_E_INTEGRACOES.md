@@ -1,132 +1,200 @@
 # Funções e integrações do assistente
 
-Documento vivo para ampliar o assistente sem transformar cada integração em uma promessa vaga.
+`[x]` concluída · `[~]` em desenvolvimento · `[ ]` pendente
 
-## Legenda
+## Casa e dispositivos
 
-- `[ ]` ainda não começou
-- `[~]` protótipo ou parte implementada, mas falta teste/integração completa
-- `[x]` implementado e verificado no aparelho ou no ambiente real
-- `[!]` depende de API, modelo, permissão ou hardware externo
+- `[~]` Wake-on-LAN para PCs, TVs e outros dispositivos.
+- `[ ]` Verificar se o dispositivo acordou por ping, HTTP, ADB ou protocolo próprio.
+- `[ ]` Android TV por ADB: abrir apps, enviar comandos, volume, pausa, reprodução, busca e desligamento.
+- `[ ]` Android TV por Google Cast: descobrir telas e enviar filmes, vídeos, músicas e fotos.
+- `[ ]` Controle de Samsung/Tizen.
+- `[ ]` Controle de LG/webOS.
+- `[ ]` Controle de Roku.
+- `[ ]` Controle de Chromecast.
+- `[ ]` Controle de projetores e receivers.
+- `[ ]` Parear dispositivos Bluetooth.
+- `[ ]` Selecionar caixa, fone ou receiver Bluetooth por nome.
+- `[ ]` Play, pausa, volume, próxima faixa e faixa anterior via Bluetooth.
+- `[ ]` Trocar automaticamente para o melhor dispositivo de áudio disponível.
+- `[ ]` Descobrir dispositivos da rede automaticamente.
+- `[ ]` Apelidar dispositivos por cômodo e pessoa.
+- `[ ]` Home Assistant nativo.
+- `[ ]` Controle de luzes, tomadas, sensores, persianas, fechaduras, câmeras e climatização.
+- `[ ]` Tailscale para controle remoto sem abrir portas na internet.
 
-## O que já foi pedido
+## TV, filmes e vídeos
 
-### Rede e dispositivos
+- `[ ]` “Ligue a TV da sala”.
+- `[ ]` “Abra a Netflix, YouTube, Plex ou Jellyfin”.
+- `[ ]` “Coloque o filme X na TV”.
+- `[ ]` “Continue de onde parei”.
+- `[ ]` “Pause”, “continue”, “avance 10 minutos” e “volte 30 segundos”.
+- `[ ]` Controle por título, ator, gênero, temporada e episódio.
+- `[ ]` Histórico de filmes e séries.
+- `[ ]` Lista de assistir depois.
+- `[ ]` Escolher automaticamente a TV mais próxima da pessoa.
+- `[ ]` Mostrar mensagens, recados e lembretes na TV.
+- `[ ]` Modo cinema: luz, volume, TV, cortina, temperatura e celular.
 
-- `[~]` **Wake-on-LAN para PC e TV**
-  - Cadastro de nome, MAC, broadcast e porta em `Configuração > Casa > Dispositivos da rede`.
-  - Ferramenta da IA: acordar o dispositivo pelo nome.
-  - Falta testar com um PC e uma TV reais; o aparelho precisa aceitar Wake-on-LAN e a rede precisa encaminhar o broadcast.
-  - O padrão é o magic packet UDP; a mesma ideia existe na integração oficial do Home Assistant.
-- `[ ]` **Estado dos dispositivos**
-  - Depois do magic packet, verificar por ping/HTTP/ADB e informar `acordando`, `online` ou `não respondeu`.
-  - Nunca confirmar “liguei” só porque o pacote foi enviado.
-- `[ ]` **Android TV por ADB seguro**
-  - Parear por IP/QR, abrir aplicativo, enviar teclas, controlar volume, pausar, retomar e desligar.
-  - ADB deve ser opcional, com confirmação para ações destrutivas.
-- `[ ]` **Google Cast/MediaRouter para TV**
-  - Descobrir TVs e iniciar mídia compatível por Cast.
-  - Filmes dependem da fonte: YouTube, Plex, Jellyfin, navegador ou aplicativo instalado.
-- `[ ]` **TV por fabricante**
-  - Adaptadores separados para Android TV, Samsung/Tizen, LG/webOS, Roku e Chromecast.
-  - Não prometer “qualquer Smart TV” sem identificar o protocolo.
-- `[ ]` **Bluetooth**
-  - Descobrir, parear e selecionar fones/caixas usando as permissões modernas do Android.
-  - Controlar play, pausa, volume e troca de faixa apenas quando o perfil Bluetooth do dispositivo oferecer isso.
-  - Exibir claramente quando o Android exigir confirmação do sistema.
-- `[ ]` **Home Assistant nativo**
-  - Token, URL local/Tailscale, descoberta de entidades e chamada de serviços.
-  - Isso cobre lâmpadas, tomadas, sensores, TV, persianas e automações sem criar um driver para cada marca.
+## Spotify e áudio
 
-### Música e mídia
+- `[~]` Tocar música no Spotify do usuário.
+- `[~]` Listar dispositivos Spotify Connect.
+- `[~]` Transferir reprodução para outro dispositivo por nome.
+- `[ ]` Tocar na Alexa pelo Spotify Connect.
+- `[ ]` Tocar em TVs, PCs, caixas e celulares por Spotify Connect.
+- `[ ]` Escolher dispositivo Spotify por cômodo.
+- `[ ]` Buscar música, artista, álbum, playlist e podcast.
+- `[ ]` Criar e editar fila de reprodução.
+- `[ ]` Tocar playlist, álbum ou discografia.
+- `[ ]` Retomar podcast do ponto salvo.
+- `[ ]` Pausar, continuar, avançar, voltar e escolher faixa.
+- `[ ]` Favoritar música e adicionar à playlist.
+- `[ ]` Identificar música tocando e responder sobre ela.
+- `[ ]` Tocar arquivos locais.
+- `[ ]` Tocar rádio online.
+- `[ ]` Tocar sons próprios.
+- `[ ]` Biblioteca de efeitos sonoros.
+- `[ ]` Multiroom com vários aparelhos.
+- `[ ]` Sincronização de música entre cômodos.
+- `[ ]` Equalizador e perfis de áudio.
+- `[ ]` Ducking: abaixar música quando o robô ou uma pessoa falar.
 
-- `[~]` **Spotify no próprio assistente**
-  - Já existem ferramentas de busca/tocar, pausa, próxima faixa, volume e música atual.
-  - Falta testar uma conta Premium real e tratar ausência de dispositivo ativo.
-- `[~]` **Spotify em outro dispositivo**
-  - Listar dispositivos Connect e transferir reprodução por nome, incluindo caixa/TV/Alexa quando aparecerem no Spotify.
-  - Falta testar Alexa real e deixar a seleção de dispositivo mais amigável no app.
-- `[ ]` **Spotify com fila, álbum, playlist e podcast**
-  - Entender “toque o álbum”, “continue minha playlist” e “retome o podcast”.
-- `[ ]` **Reprodução local**
-  - Tocar arquivos locais, rádio HTTP, sons próprios e respostas faladas sem misturar a fila do Spotify.
-- `[ ]` **Multiroom**
-  - Tocar em vários aparelhos pareados ou transferir para um grupo quando o serviço suportar grupo.
-  - Sincronização precisa usar um protocolo de mídia, não apenas falar em cada aparelho ao mesmo tempo.
-- `[ ]` **Controle de filmes**
-  - “Abra o filme”, “pause”, “avance 10 minutos”, “volte”, “qual episódio?” e “continue de onde parei”.
-  - A implementação será por adaptadores Plex/Jellyfin/Cast/ADB.
+## Echo Dot local
 
-### Experiência de Echo Dot
+- `[ ]` Wake word personalizada.
+- `[ ]` Cadastro guiado da wake word com várias repetições.
+- `[ ]` Wake word diferente por aparelho.
+- `[ ]` Resposta curta, resposta detalhada e modo silencioso.
+- `[ ]` Follow-up sem repetir a wake word.
+- `[ ]` Modo sussurro.
+- `[ ]` Modo não perturbe.
+- `[ ]` Volume noturno automático.
+- `[ ]` Anúncio em todos os aparelhos.
+- `[ ]` Anúncio em um cômodo.
+- `[ ]` Anúncio para uma pessoa.
+- `[ ]` Interfone entre dois cômodos.
+- `[ ]` Canal de voz com aceitar, recusar e encerrar.
+- `[ ]` Chamadas para contatos autorizados.
+- `[ ]` Rotinas com várias ações paralelas.
+- `[ ]` Rotinas por frase, horário, pessoa, rosto, presença, clima, som ou dispositivo.
+- `[ ]` Rotinas de chegada e saída.
+- `[ ]` Rotina de bom-dia.
+- `[ ]` Rotina de boa-noite.
+- `[ ]` Rotina de cinema.
+- `[ ]` Rotina de dormir.
+- `[ ]` Rotina de acordar.
 
-- `[ ]` **Alarmes completos**
-  - Alarme único, repetição por dias, rótulo, pessoa, cômodo, som, volume, duração, soneca e cancelamento por voz.
-- `[ ]` **Alarme musical**
-  - Tocar som local, rádio ou Spotify no horário; respeitar Premium, rede e dispositivo disponível.
-- `[ ]` **Despertar gradual**
-  - Aumentar brilho, volume e animação aos poucos; oferecer “mais 5 minutos”.
-- `[ ]` **Sons escolhíveis**
-  - Biblioteca de sons próprios: sino, rádio, chuva, floresta, sintetizador, voz robótica e arquivo importado.
-  - Cada som deve informar se está instalado e tocar uma prévia nas configurações.
-- `[ ]` **Timer e cronômetro avançados**
-  - Vários timers nomeados, contagem regressiva visual, repetir, pausar, adicionar tempo e avisar a pessoa certa.
-- `[ ]` **Rotinas/cenas**
-  - Uma frase executa várias ações em paralelo: luz, TV, música, clima, mensagem e timer.
-  - Cada ação retorna sucesso/erro individual; a IA não diz que a rotina terminou se uma etapa falhou.
-- `[ ]` **Interfone e anúncios**
-  - Falar em todos os aparelhos, em um cômodo ou para uma pessoa; responder pelo aparelho de origem.
-- `[ ]` **Modo não perturbe e volume noturno**
-  - Horários silenciosos, exceções para alarmes/remédios e limite de volume por cômodo.
-- `[ ]` **Resumo proativo**
-  - Bom-dia com agenda, clima, timers, lembretes, recados e bateria dos dispositivos, por pessoa.
+## Alarmes, timers e lembretes
 
-### Funções úteis pesquisadas
+- `[ ]` Despertador único.
+- `[ ]` Despertador recorrente por dias da semana.
+- `[ ]` Despertador por pessoa.
+- `[ ]` Despertador por cômodo.
+- `[ ]` Despertador com som escolhido.
+- `[ ]` Despertador com música.
+- `[ ]` Despertador com playlist.
+- `[ ]` Despertador com volume gradual.
+- `[ ]` Despertador com luz gradual.
+- `[ ]` Soneca por voz.
+- `[ ]` Desligar alarme por voz.
+- `[ ]` Confirmação de que a pessoa acordou.
+- `[ ]` Escalonamento para cuidador sem confirmação.
+- `[ ]` Timer nomeado.
+- `[ ]` Vários timers ao mesmo tempo.
+- `[ ]` Pausar, retomar e adicionar tempo ao timer.
+- `[ ]` Cronômetro.
+- `[ ]` Lembrete persistente até confirmação.
+- `[ ]` Lembrete por pessoa.
+- `[ ]` Lembrete no cômodo onde a pessoa está.
+- `[ ]` Lembrete por reconhecimento facial.
+- `[ ]` Lembrete por reconhecimento de voz.
+- `[ ]` Histórico de lembretes confirmados.
 
-- `[ ]` **Listas por voz**: compras, tarefas, filmes para ver, livros e itens recorrentes.
-- `[ ]` **Presença e contexto**: rosto, voz, cômodo, horário, dispositivo mais próximo e pessoa-alvo.
-- `[ ]` **Mensagens internas**: recado entregue uma vez, confirmação de leitura e expiração.
-- `[ ]` **Chamadas entre cômodos**: canal de voz com aceitar/recusar e encerramento por voz.
-- `[ ]` **Detecção de sons**: campainha, bebê chorando, alarme, cachorro, gato, tosse e vidro quebrando, com regras de privacidade.
-- `[ ]` **Tradução e conversão**: idioma, moeda, unidade, fuso e conversão falada rápida.
-- `[ ]` **Acessibilidade**: leitura de texto pela câmera, descrição de ambiente, modo alto contraste e comandos sem tela.
-- `[ ]` **Modo convidado**: comandos de casa sem acessar memórias, calendário, Spotify ou dados pessoais.
-- `[ ]` **Permissões por pessoa**: criança, morador, cuidador e administrador; ações sensíveis exigem confirmação.
-- `[ ]` **Auditoria compreensível**: histórico de ferramenta, dispositivo, horário, resultado e motivo de falha.
-- `[ ]` **Modo offline**: wake word, timers, alarmes, Bluetooth local, Wake-on-LAN e comandos básicos sem internet.
-- `[ ]` **Backup e restauração**: exportar configurações, listas, rotinas e aliases sem exportar tokens secretos.
-- `[ ]` **Webhooks seguros**: ações customizadas com autenticação, timeout, retry e resultado verificável.
-- `[ ]` **Plugins de comunidade**: adaptadores isolados por protocolo, sem permitir que uma integração trave o assistente.
+## Casa inteligente e automações
 
-## O que a pesquisa confirmou
+- `[ ]` Cenas de iluminação, temperatura e segurança.
+- `[ ]` Cenas de presença e ausência.
+- `[ ]` Cenas para chuva, frio, calor e tempestade.
+- `[ ]` Aviso de porta ou janela aberta.
+- `[ ]` Aviso de vazamento ou fumaça.
+- `[ ]` Aviso de energia ou internet caída.
+- `[ ]` Aviso de bateria baixa.
+- `[ ]` Monitorar computador, impressora, roteador e servidor.
+- `[ ]` Reiniciar dispositivo por comando autorizado.
+- `[ ]` Executar scripts autorizados no PC.
+- `[ ]` Abrir programas no PC.
+- `[ ]` Controlar volume e mídia no PC.
+- `[ ]` Enviar notificações para PC, celular e TV.
 
-1. **Wake-on-LAN** é um pacote mágico local; ele acorda apenas equipamentos configurados para aceitar WoL. O Home Assistant também separa o envio do pacote da verificação posterior de estado.
-2. **Spotify Connect** permite listar dispositivos e transferir a reprodução para um dispositivo, mas a API exige Premium para controlar playback. Alexa só será destino se aparecer como dispositivo Spotify disponível.
-3. **Spotify no próprio Android** não deve ser tratado como um player local ilimitado: o Web Playback SDK é voltado a navegador e também exige Premium. A primeira versão deve controlar o app/Connect; player local é outro módulo.
-4. **Android TV** não possui uma API universal de “controle de qualquer TV”. O caminho confiável é escolher entre ADB pareado, Google Cast, MediaSession ou adaptador do fabricante.
-5. **Alexa** oferece conceitos importantes para copiar: skills, filas de mídia, alarmes musicais, multiroom, rotinas e anúncios. Não devemos fingir que uma Alexa pode ser controlada por uma API pública genérica sem a conta/dispositivo e o protocolo corretos.
-6. **Bluetooth** é uma integração de transporte, não uma garantia de controle: o Android pode conectar a caixa, mas play/volume/entrada dependem dos perfis e do fabricante.
+## Inteligência e convivência
 
-## Fontes oficiais
+- `[ ]` Resumo da manhã e da noite.
+- `[ ]` Resumo de agenda, clima, tarefas e lembretes.
+- `[ ]` Perguntas de acompanhamento.
+- `[ ]` Memória, personalidade e preferências por pessoa.
+- `[ ]` Preferências de música por pessoa.
+- `[ ]` Preferências de cômodo.
+- `[ ]` Piadas contextuais.
+- `[ ]` Jogos e quizzes por voz.
+- `[ ]` Pontuação por pessoa.
+- `[ ]` Modo criança.
+- `[ ]` Modo visitante.
+- `[ ]` Modo cuidador.
+- `[ ]` Permissões por pessoa.
+- `[ ]` Confirmação para ações importantes.
+- `[ ]` Histórico de ações.
+- `[ ]` Explicação do que fez.
+- `[ ]` Explicação do que falhou.
+- `[ ]` Nunca confirmar tarefa não executada.
 
-- [Spotify: listar dispositivos disponíveis](https://developer.spotify.com/documentation/web-api/reference/get-a-users-available-devices)
-- [Spotify: transferir reprodução](https://developer.spotify.com/documentation/web-api/reference/transfer-a-users-playback)
-- [Spotify Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk)
-- [Alexa Music, Radio and Podcast Skill API](https://developer.amazon.com/en-US/docs/alexa/music-skills/understand-the-music-skill-api.html)
-- [Android TV MediaSession](https://developer.android.com/training/tv/playback/media-session)
-- [Home Assistant Wake-on-LAN](https://www.home-assistant.io/integrations/wake_on_lan)
-- [Sherpa-ONNX keyword spotting](https://k2-fsa.github.io/sherpa/onnx/kws/index.html)
+## Visão, som e sensores
 
-## Ordem de implementação
+- `[ ]` Reconhecimento facial contínuo.
+- `[ ]` Rastreamento da pessoa fixada.
+- `[ ]` Reconhecimento de voz por pessoa.
+- `[ ]` Detecção de movimento, gestos, aceno e palmas.
+- `[ ]` Detecção de campainha.
+- `[ ]` Detecção de bebê chorando.
+- `[ ]` Detecção de cachorro e gato.
+- `[ ]` Detecção de tosse e espirro.
+- `[ ]` Detecção de alarme.
+- `[ ]` Detecção de vidro quebrando.
+- `[ ]` Leitura de texto pela câmera.
+- `[ ]` Descrição do ambiente.
+- `[ ]` Leitura de códigos QR.
+- `[ ]` Detecção de objetos perdidos.
+- `[ ]` Modo escuro com iluminação simulada.
 
-1. Wake-on-LAN + estado verificável.
-2. Spotify: login por usuário, listar dispositivos, transferir e selecionar por cômodo.
-3. Alarmes com sons, soneca e rotinas paralelas.
-4. Adaptador Android TV: ADB + Cast.
-5. Bluetooth com descoberta, pareamento assistido e media controls.
-6. Home Assistant/Tailscale como ponte para o restante da casa.
-7. Echo local: anúncios, interfone, multiroom, rotinas e modo não perturbe.
-8. Plugins, permissões e auditoria.
+## Aplicativo companheiro
 
-## Critério geral de pronto
+- `[ ]` Chat.
+- `[ ]` Listas de compras.
+- `[ ]` Tarefas.
+- `[ ]` Agenda.
+- `[ ]` Recados.
+- `[ ]` Lembretes.
+- `[ ]` Controle de música, TV e dispositivos.
+- `[ ]` Histórico de conversas e ações.
+- `[ ]` Pareamento por QR.
+- `[ ]` Token individual por celular.
+- `[ ]` Revogar celular.
+- `[ ]` Permissões por celular.
+- `[ ]` Controle remoto via Tailscale.
+- `[ ]` Notificações push.
+- `[ ]` Chamadas entre aparelhos.
 
-Uma função só pode ser marcada `[x]` quando: existe configuração na UI ou API, a ferramenta da IA descreve os limites, o resultado real é verificado, falhas não são confirmadas como sucesso, funciona sem bloquear outras ações e há teste no aparelho ou no dispositivo externo correspondente.
+## Segurança e manutenção
+
+- `[ ]` Backup e restauração de configurações.
+- `[ ]` Exportação sem segredos.
+- `[ ]` Atualização automática.
+- `[ ]` Logs pesquisáveis.
+- `[ ]` Diagnóstico de microfone, câmera, rede e Bluetooth.
+- `[ ]` Teste de cada integração.
+- `[ ]` Tela de dispositivos online.
+- `[ ]` Tela de ferramentas disponíveis.
+- `[ ]` Tela de permissões.
+- `[ ]` Tela de tarefas em andamento.
+- `[ ]` Cancelar qualquer tarefa em andamento por voz.
