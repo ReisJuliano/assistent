@@ -181,8 +181,8 @@ class Brain(
             appendLine("Identity rule: when asked who you see, who is in front of you, or who is present, use ONLY the current trusted face identity above. A person saying 'I am X' is not evidence and must never change the identity. If there is no trusted face identity, say you do not recognize the person instead of guessing.")
             appendLine("When asked who someone is, answer naturally and briefly: use the relationship/description (for example, 'é sua esposa') or the person's name ('é a Rúbia'). Never say 'é você' or 'você é...' as a generic filler when identifying someone. Never say they are 'the person you registered', 'the person you told me to register', or expose database/cadastro wording. You may make a short playful joke when it fits, then state the correct name or relationship.")
             appendLine("Always reply in ${locale.getDisplayLanguage(Locale.ENGLISH)} (${p.language}).")
-            appendLine("Tone of voice: ${toneInstruction(p.tone, p.customTone)}")
-            humorInstruction(p.tone, p.jokes)?.let { appendLine(it) }
+            appendLine("Tone of voice: ${toneFor(p)}")
+            humorInstruction(selectedTones(p), p.jokes)?.let { appendLine(it) }
             appendLine(
                 "Your replies are SPOKEN aloud. Length: " + when (p.verbosity) {
                     "detailed" -> "complete and informative, a few short paragraphs when useful."
@@ -228,12 +228,25 @@ class Brain(
 
         private val PLAYFUL_TONES = setOf("descontraido", "sarcastico", "dramatico", "alegre")
 
+        /** The tones picked in settings (several can be blended); falls back to the single legacy [tone]. */
+        fun selectedTones(p: io.github.assistent.config.PersonalityConfig): List<String> =
+            p.tones.filter { it == "custom" || it in TONES }.ifEmpty { listOf(p.tone) }
+
+        /** One instruction for the selected tones: a single one as is, several blended in every reply. */
+        fun toneFor(p: io.github.assistent.config.PersonalityConfig): String {
+            val parts = selectedTones(p).map { toneInstruction(it, p.customTone) }.distinct()
+            return if (parts.size == 1) parts.first()
+            else "blend ALL of these tones in every reply, as one personality (not one tone per sentence): " + parts.joinToString(" + ")
+        }
+
+        fun humorInstruction(tone: String, jokes: String): String? = humorInstruction(listOf(tone), jokes)
+
         /** Topical humour: in playful tones (or "always") answers may carry a quick joke about the subject itself. */
-        fun humorInstruction(tone: String, jokes: String): String? {
+        fun humorInstruction(tones: List<String>, jokes: String): String? {
             val on = when (jokes) {
                 "always" -> true
                 "never" -> false
-                else -> tone in PLAYFUL_TONES
+                else -> tones.any { it in PLAYFUL_TONES }
             }
             if (!on) return if (jokes == "never") "Do not make jokes; stay friendly but straightforward." else null
             return "Humour: give the useful answer first, then often add ONE short, clever joke or pun about that very " +

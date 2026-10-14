@@ -97,7 +97,7 @@ class PhrasePool(
                 val avoid = (store.lines[category].orEmpty() + store.used[category].orEmpty()).takeLast(40)
                 val prompt = buildString {
                     append("Você escreve falas curtas para ${cfg.personality.name}, um robozinho de rosto animado que mora num celular. ")
-                    append("Personalidade: ${cfg.personality.traits}. Tom: ${io.github.assistent.brain.Brain.toneInstruction(cfg.personality.tone, cfg.personality.customTone)} ")
+                    append("Personalidade: ${cfg.personality.traits}. Tom: ${io.github.assistent.brain.Brain.toneFor(cfg.personality)} ")
                     append("Escreva 10 falas NOVAS e variadas em ${cfg.personality.language} para esta situação: $desc. ")
                     append("Cada fala com no máximo 14 palavras, natural, engraçadinha, como alguém vivo falaria. ")
                     if (examples.any { "{n}" in it }) append("Use {n} onde entraria o nome da pessoa (em todas as falas). ")

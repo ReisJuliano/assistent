@@ -37,7 +37,7 @@ class ReminderPhrases(private val config: ConfigStore, private val llm: LlmClien
             appendLine("You are ${p.name}, a small home robot. Write ONE spoken sentence in ${p.language} to deliver this reminder.")
             appendLine("Reminder: \"${r.message}\" (type: ${r.type}, ${if (r.kind == "alarm") "alarm" else "reminder"}). Time now: ${LocalTime.now().withSecond(0).withNano(0)}.")
             if (owner.isNotBlank()) appendLine("Address it to $owner by name.")
-            appendLine("Tone: ${Brain.toneInstruction(p.tone, p.customTone)}")
+            appendLine("Tone: ${Brain.toneFor(p)}")
             if (r.style.isNotBlank()) appendLine("Style requested by the user: ${r.style}.")
             if (nag > 0) appendLine("This is reminder number ${nag + 1}: it was not confirmed yet, so be more insistent (still kind).")
             if (r.type == "medicine") appendLine("It is about medicine: keep the exact medicine name/dose from the reminder, no jokes about health.")

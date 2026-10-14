@@ -40,5 +40,15 @@ class ReminderPhrasesTest {
         assertNull(Brain.humorInstruction("formal", "auto"))
         assertNotNull(Brain.humorInstruction("formal", "always"))
         assertTrue(Brain.humorInstruction("descontraido", "never")!!.startsWith("Do not"))
+        assertNotNull(Brain.humorInstruction(listOf("formal", "sarcastico"), "auto"))
+    }
+
+    @Test fun severalTonesAreBlended() {
+        val p = io.github.assistent.config.PersonalityConfig(tones = listOf("descontraido", "dramatico"))
+        val text = Brain.toneFor(p)
+        assertTrue(text, text.startsWith("blend ALL"))
+        assertTrue(text.contains(Brain.TONES.getValue("dramatico")))
+        val single = io.github.assistent.config.PersonalityConfig(tone = "formal")
+        assertEquals(Brain.TONES.getValue("formal"), Brain.toneFor(single))
     }
 }

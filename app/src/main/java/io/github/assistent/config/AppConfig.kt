@@ -92,6 +92,8 @@ data class PersonalityConfig(
      * (then [customTone] is used).
      */
     val tone: String = "natural",
+    /** Several tones at once, blended in every reply (e.g. descontraido + sarcastico). Empty = just [tone]. */
+    val tones: List<String> = emptyList(),
     val customTone: String = "",
     /** short, medium, detailed */
     val verbosity: String = "short",

@@ -117,7 +117,32 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val wide = maxWidth > 720.dp
+            // A phone lying down (S24 Ultra at FHD+ is ~384 dp tall) has no room for a header plus a side rail:
+            // title, tabs and close share one bar and the content gets the whole height.
+            val short = wide && maxHeight < 500.dp
             Column(Modifier.fillMaxSize()) {
+                if (short) {
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(cfg.personality.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        androidx.compose.material3.ScrollableTabRow(
+                            selectedTabIndex = tab.ordinal, modifier = Modifier.weight(1f), edgePadding = 8.dp,
+                            containerColor = Color.Transparent, divider = {},
+                        ) {
+                            SettingsTab.entries.forEach { t ->
+                                androidx.compose.material3.LeadingIconTab(
+                                    selected = tab == t, onClick = { tab = t },
+                                    icon = { Icon(t.icon, contentDescription = null) }, text = { Text(t.label) },
+                                )
+                            }
+                        }
+                        IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "Fechar") }
+                    }
+                    Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (tab == SettingsTab.FACE) FacePreview(cfg, Modifier.weight(0.38f).fillMaxHeight().padding(bottom = 8.dp))
+                        TabContent(tab, Modifier.weight(0.62f)) { t, m -> SettingsList(graph, cfg, up, m, preview = false, onClose = onClose, tab = t) }
+                    }
+                    return@Column
+                }
                 Row(
                     Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -376,13 +401,22 @@ private fun SettingsList(
                     Section("Personalidade") {
                         Field("Nome do assistente", cfg.personality.name) { v -> if (v.isNotBlank()) up { it.copy(personality = it.personality.copy(name = v.trim())) } }
                         Field("Seu nome", cfg.personality.userName) { v -> up { it.copy(personality = it.personality.copy(userName = v.trim())) } }
-                        Label("Tom das respostas")
+                        Label("Tom das respostas (escolha um ou vários: ele mistura)")
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TONE_LABELS.forEach { (key, label) ->
-                                FilterChip(selected = cfg.personality.tone == key, onClick = { up { it.copy(personality = it.personality.copy(tone = key)) } }, label = { Text(label) })
+                                val chosen = io.github.assistent.brain.Brain.selectedTones(cfg.personality)
+                                FilterChip(
+                                    selected = key in chosen,
+                                    onClick = {
+                                        // Several tones can be picked and are blended; at least one stays selected.
+                                        val next = if (key in chosen) (chosen - key).ifEmpty { chosen } else chosen + key
+                                        up { it.copy(personality = it.personality.copy(tones = next, tone = next.first())) }
+                                    },
+                                    label = { Text(label) },
+                                )
                             }
                         }
-                        if (cfg.personality.tone == "custom") {
+                        if ("custom" in io.github.assistent.brain.Brain.selectedTones(cfg.personality)) {
                             Field("Descreva o tom (ex.: fala como um pirata)", cfg.personality.customTone, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(customTone = v)) } }
                         }
                         Label("Piadinhas sobre o assunto")
