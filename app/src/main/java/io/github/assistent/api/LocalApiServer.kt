@@ -44,6 +44,8 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -108,17 +110,24 @@ import java.security.MessageDigest
  */
 class LocalApiServer(private val g: AppGraph) {
     private var server: EmbeddedServer<*, *>? = null
+    private var runningConfig: ApiConfig? = null
 
     fun start() {
         g.scope.launch {
-            g.config.config.map { it.api }.distinctUntilChanged().collect { restart(it) }
+            g.config.config.map { it.api }.distinctUntilChanged().collectLatest {
+                // Let the config request finish before replacing the server that received it.
+                delay(250)
+                restart(it)
+            }
         }
     }
 
     @Synchronized
     private fun restart(cfg: ApiConfig) {
+        if (runningConfig == cfg && server != null) return
         server?.stop(300, 1_000)
         server = null
+        runningConfig = cfg
         if (!cfg.enabled) return
         val host = if (cfg.allowLan) "0.0.0.0" else "127.0.0.1"
         server = runCatching {
@@ -384,10 +393,11 @@ class LocalApiServer(private val g: AppGraph) {
 
                 // ---------------------------------------------------------- config
                 get("/config", guard { call.respond(g.config.current) })
-                put("/config", guard { call.respond(g.config.replace(call.receive<AppConfig>())) })
+                put("/config", guard { g.config.replace(call.receive<AppConfig>()); call.respond(ok()) })
                 patch("/config", guard {
-                    val patch = AppJson.parseToJsonElement(call.receiveText()) as? JsonObject ?: error("body must be a JSON object")
-                    call.respond(g.config.patch(patch))
+                    val patch = call.receive<JsonObject>()
+                    g.config.patch(patch)
+                    call.respond(ok())
                 })
                 post("/config/token/regenerate", guard {
                     call.respond(buildJsonObject { put("token", g.config.regenerateToken()) })
