@@ -54,7 +54,7 @@ class ConfigStore(dir: File) {
     }
 
     companion object {
-        const val CURRENT_VERSION = 6
+        const val CURRENT_VERSION = 7
 
         /** Upgrades settings saved by older versions (defaults that changed on purpose). */
         fun migrate(cfg: AppConfig): AppConfig {
@@ -87,6 +87,10 @@ class ConfigStore(dir: File) {
             if (c.version < 6 && (c.update.url.isBlank() || ":8318/" in c.update.url)) {
                 // v6: updates come from GitHub releases instead of the dev PC's LAN server.
                 c = c.copy(update = c.update.copy(url = UpdateConfig.DEFAULT_URL))
+            }
+            if (c.version < 7 && c.tts.robotVoice == "light") {
+                // v7: "light" was barely audible as a robot; the classic preset is the default now.
+                c = c.copy(tts = c.tts.copy(robotVoice = "classic"))
             }
             return c.copy(version = CURRENT_VERSION)
         }

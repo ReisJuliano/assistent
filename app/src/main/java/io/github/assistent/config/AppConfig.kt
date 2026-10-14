@@ -104,7 +104,7 @@ data class SttConfig(
 @Serializable
 data class TtsConfig(
     /** Robot effect applied to any voice: off, light, classic, heavy. */
-    val robotVoice: String = "light",
+    val robotVoice: String = "classic",
     /** "android", "openai" (OpenAI or any compatible server, e.g. Kokoro-FastAPI) or "elevenlabs". */
     val provider: String = "android",
     val baseUrl: String = "https://api.openai.com/v1",

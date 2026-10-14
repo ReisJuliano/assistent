@@ -211,7 +211,7 @@ Other scenes cannot interrupt a light scene.
 ### Robot voice (`voice/RobotVoice.kt`)
 
 Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback comb (metallic) + optional bit-crush, presets
-`off/light/classic/heavy` (`tts.robotVoice`).
+`off/light/classic/heavy/dalek/radio/arcade` (`tts.robotVoice`, default `classic`); radio/dalek add one-pole band limiting.
 
 ### Reminder lines and humour (`core/ReminderPhrases.kt`, `Brain.humorInstruction`)
 
@@ -236,7 +236,8 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
 
 - Add settings to `AppConfig.kt` with defaults (old JSON files keep working: unknown keys ignored, missing keys get
   defaults). Changes apply live: observe `config.config` (StateFlow) or read `config.current` at use time.
-- Expose new settings in `SettingsScreen` (sections + `Field`/`SliderRow`/`SwitchRow`/`Segmented` helpers) — every
+- Expose new settings in `SettingsScreen`: pick the tab (`SettingsTab`: FACE, BRAIN, VOICE, LIFE, PEOPLE, HOME, SYSTEM; branch of
+  `when (tab)` in `SettingsList`) and use the section helpers (`Section`/`Field`/`SliderRow`/`SwitchRow`/`Segmented`) — every
   edit is saved immediately; there is no save button.
 - `device`, `mesh` and `api` are per-device; everything else is shared across the mesh (`Mesh.shared`).
 

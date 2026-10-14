@@ -1,5 +1,6 @@
 package io.github.assistent.ui
 
+import androidx.compose.animation.togetherWith
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -77,6 +79,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.assistent.AppGraph
 import io.github.assistent.config.AppConfig
 import io.github.assistent.config.WebhookDef
@@ -102,6 +105,8 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
     val cfg by graph.config.config.collectAsState()
     val up: ((AppConfig) -> AppConfig) -> Unit = { graph.config.update(it) }
 
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SettingsTab.FACE) }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val wide = maxWidth > 720.dp
@@ -117,16 +122,61 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
                     IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = "Fechar") }
                 }
                 if (wide) {
-                    Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FacePreview(cfg, Modifier.weight(0.42f).fillMaxHeight().padding(bottom = 16.dp))
-                        SettingsList(graph, cfg, up, Modifier.weight(0.58f), preview = false, onClose = onClose)
+                    Row(Modifier.fillMaxSize().padding(end = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        androidx.compose.material3.NavigationRail(
+                            Modifier.fillMaxHeight().verticalScroll(rememberScrollState()),
+                            containerColor = Color.Transparent,
+                        ) {
+                            SettingsTab.entries.forEach { t ->
+                                androidx.compose.material3.NavigationRailItem(
+                                    selected = tab == t, onClick = { tab = t },
+                                    icon = { Text(t.emoji, fontSize = 22.sp) }, label = { Text(t.label) },
+                                )
+                            }
+                        }
+                        // The live face preview only where it matters: on the face tab.
+                        if (tab == SettingsTab.FACE) FacePreview(cfg, Modifier.weight(0.42f).fillMaxHeight().padding(bottom = 16.dp))
+                        TabContent(tab, Modifier.weight(0.58f)) { t, m -> SettingsList(graph, cfg, up, m, preview = false, onClose = onClose, tab = t) }
                     }
                 } else {
-                    SettingsList(graph, cfg, up, Modifier.fillMaxSize().padding(horizontal = 16.dp), preview = true, onClose = onClose)
+                    androidx.compose.material3.ScrollableTabRow(
+                        selectedTabIndex = tab.ordinal, edgePadding = 12.dp, containerColor = Color.Transparent, divider = {},
+                    ) {
+                        SettingsTab.entries.forEach { t ->
+                            androidx.compose.material3.Tab(
+                                selected = tab == t, onClick = { tab = t },
+                                text = { Text("${t.emoji}  ${t.label}") },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TabContent(tab, Modifier.fillMaxSize().padding(horizontal = 16.dp)) { t, m ->
+                        SettingsList(graph, cfg, up, m, preview = true, onClose = onClose, tab = t)
+                    }
                 }
             }
         }
     }
+}
+
+/** Settings grouped by what people look for, instead of one endless list. */
+enum class SettingsTab(val emoji: String, val label: String) {
+    FACE("😀", "Rosto"), BRAIN("🧠", "Cérebro"), VOICE("🔊", "Voz"), LIFE("🌱", "Vida"),
+    PEOPLE("👥", "Pessoas"), HOME("🏠", "Casa"), SYSTEM("⚙️", "Sistema"),
+}
+
+/** Cross-fades between tabs; each tab gets its own list (and scroll position starts at the top). */
+@Composable
+private fun TabContent(tab: SettingsTab, modifier: Modifier, content: @Composable (SettingsTab, Modifier) -> Unit) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = tab, modifier = modifier, label = "settings-tab",
+        transitionSpec = {
+            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+            (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { it / 12 * dir }) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120))
+        },
+    ) { t -> content(t, Modifier.fillMaxSize()) }
 }
 
 @Composable
@@ -177,6 +227,11 @@ private val TONE_LABELS = listOf(
     "sarcastico" to "Sarcástico", "fofo" to "Fofo", "dramatico" to "Dramático", "custom" to "Personalizado",
 )
 
+private val ROBOT_VOICES = listOf(
+    "off" to "Nenhum", "light" to "Leve", "classic" to "Clássico", "heavy" to "Pesado",
+    "dalek" to "Dalek", "radio" to "Rádio", "arcade" to "8-bit",
+)
+
 private val EYE_STYLES = listOf(
     "solid" to "Pílula sólida", "iris" to "Íris escura", "cartoon" to "Cartoon", "ring" to "Anel", "orb" to "Orbe",
 )
@@ -194,266 +249,271 @@ private val ACTIVITY_LABELS = mapOf(
 @Composable
 private fun SettingsList(
     graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> Unit, modifier: Modifier, preview: Boolean, onClose: () -> Unit,
+    tab: SettingsTab,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     LazyColumn(modifier, contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (preview) item { FacePreview(cfg, Modifier.fillMaxWidth().height(300.dp)) }
-
-        item {
-            Section("Rosto") {
-                Label("Cor")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FACE_COLORS.forEach { hex ->
-                        val selected = cfg.face.color.equals(hex, ignoreCase = true)
-                        Box(
-                            Modifier.size(36.dp).clip(CircleShape).background(parseHexColor(hex))
-                                .border(BorderStroke(if (selected) 3.dp else 0.dp, Color.White), CircleShape)
-                                .clickable { up { it.copy(face = it.face.copy(color = hex)) } },
+        when (tab) {
+            SettingsTab.FACE -> {
+                if (preview) item { FacePreview(cfg, Modifier.fillMaxWidth().height(300.dp)) }
+                item {
+                    Section("Rosto") {
+                        Label("Cor")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FACE_COLORS.forEach { hex ->
+                                val selected = cfg.face.color.equals(hex, ignoreCase = true)
+                                Box(
+                                    Modifier.size(36.dp).clip(CircleShape).background(parseHexColor(hex))
+                                        .border(BorderStroke(if (selected) 3.dp else 0.dp, Color.White), CircleShape)
+                                        .clickable { up { it.copy(face = it.face.copy(color = hex)) } },
+                                )
+                            }
+                        }
+                        Field("Cor personalizada (#RRGGBB)", cfg.face.color) { v -> if (Regex("#[0-9a-fA-F]{6}").matches(v)) up { it.copy(face = it.face.copy(color = v)) } }
+                        SliderRow("Tamanho do rosto", cfg.face.scale, 0.5f..1.5f) { v -> up { it.copy(face = it.face.copy(scale = v)) } }
+                        SliderRow("Tamanho dos olhos", cfg.face.eyeSize, 0.6f..1.6f) { v -> up { it.copy(face = it.face.copy(eyeSize = v)) } }
+                        SliderRow("Distância entre olhos", cfg.face.eyeSpacing, 0.6f..1.6f) { v -> up { it.copy(face = it.face.copy(eyeSpacing = v)) } }
+                        SliderRow("Arredondamento", cfg.face.eyeRoundness, 0f..1f) { v -> up { it.copy(face = it.face.copy(eyeRoundness = v)) } }
+                        SliderRow("Altura dos olhos", cfg.face.eyeAspect, 0.6f..1.8f) { v -> up { it.copy(face = it.face.copy(eyeAspect = v)) } }
+                        Label("Estilo dos olhos")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            EYE_STYLES.forEach { (key, label) ->
+                                FilterChip(selected = cfg.face.eyeStyle == key, onClick = { up { it.copy(face = it.face.copy(eyeStyle = key)) } }, label = { Text(label) })
+                            }
+                        }
+                        if (cfg.face.eyeStyle != "solid") {
+                            SliderRow("Tamanho da íris", cfg.face.irisSize, 0.3f..0.9f) { v -> up { it.copy(face = it.face.copy(irisSize = v)) } }
+                            SliderRow("Tamanho da pupila", cfg.face.pupilSize, 0.2f..0.8f) { v -> up { it.copy(face = it.face.copy(pupilSize = v)) } }
+                        }
+                        SwitchRow("Sobrancelhas", "Acompanham a emoção", cfg.face.showBrows) { v -> up { it.copy(face = it.face.copy(showBrows = v)) } }
+                        if (cfg.face.showBrows) {
+                            SliderRow("Espessura das sobrancelhas", cfg.face.browThickness, 0.5f..2.5f) { v -> up { it.copy(face = it.face.copy(browThickness = v)) } }
+                        }
+                        SwitchRow("Bracinhos", "Seguram objetos e fazem gestos", cfg.face.showArms) { v -> up { it.copy(face = it.face.copy(showArms = v)) } }
+                        if (cfg.face.showArms) SwitchRow("Mãozinhas", "Mãos redondas na ponta dos braços", cfg.face.armHands) { v -> up { it.copy(face = it.face.copy(armHands = v)) } }
+                        SwitchRow("Mostrar boca", checked = cfg.face.showMouth) { v -> up { it.copy(face = it.face.copy(showMouth = v)) } }
+                        if (cfg.face.showMouth) {
+                            SliderRow("Tamanho da boca", cfg.face.mouthSize, 0.5f..1.6f) { v -> up { it.copy(face = it.face.copy(mouthSize = v)) } }
+                            SliderRow("Espessura da boca", cfg.face.mouthThickness, 0.5f..3f) { v -> up { it.copy(face = it.face.copy(mouthThickness = v)) } }
+                        }
+                        SliderRow("Brilho neon", cfg.face.glow, 0f..1.5f) { v -> up { it.copy(face = it.face.copy(glow = v)) } }
+                        SliderRow("Posição vertical", cfg.face.offsetY, -0.3f..0.3f) { v -> up { it.copy(face = it.face.copy(offsetY = v)) } }
+                    }
+                }
+                item {
+                    Section("Animação e tela") {
+                        SliderRow("Velocidade das expressões", cfg.face.animationStiffness, 30f..400f, format = { "${it.roundToInt()}" }) { v -> up { it.copy(face = it.face.copy(animationStiffness = v)) } }
+                        SliderRow("Elasticidade (menor = mais quique)", cfg.face.animationDamping, 0.4f..1f) { v -> up { it.copy(face = it.face.copy(animationDamping = v)) } }
+                        SwitchRow("Movimentos espontâneos", "Olhar ao redor, inclinar a cabeça quando ocioso", cfg.face.idleMotion) { v -> up { it.copy(face = it.face.copy(idleMotion = v)) } }
+                        SwitchRow("Seguir rosto com a câmera", "Detecção local, nada é gravado", cfg.face.cameraTracking) { v -> up { it.copy(face = it.face.copy(cameraTracking = v)) } }
+                        SwitchRow("Legendas", "Mostra o que ouviu e respondeu", cfg.face.showSubtitles) { v -> up { it.copy(face = it.face.copy(showSubtitles = v)) } }
+                        SwitchRow("Relógio no canto", "Relógio analógico sempre visível", cfg.face.showClock) { v -> up { it.copy(face = it.face.copy(showClock = v)) } }
+                        if (cfg.face.showClock) {
+                            Segmented(listOf("digital" to "Digital retrô", "analog" to "Analógico"), cfg.face.clockStyle) { v ->
+                                up { it.copy(face = it.face.copy(clockStyle = v)) }
+                            }
+                            Segmented(listOf("top_left" to "↖", "top_right" to "↗", "bottom_left" to "↙", "bottom_right" to "↘"), cfg.face.clockCorner) { v ->
+                                up { it.copy(face = it.face.copy(clockCorner = v)) }
+                            }
+                        }
+                        SwitchRow("Manter tela ligada", checked = cfg.face.keepScreenOn) { v -> up { it.copy(face = it.face.copy(keepScreenOn = v)) } }
+                        Label("Orientação")
+                        Segmented(listOf("auto" to "Automática", "portrait" to "Vertical", "landscape" to "Horizontal"), cfg.face.orientation) { v ->
+                            up { it.copy(face = it.face.copy(orientation = v)) }
+                        }
+                    }
+                }
+            }
+            SettingsTab.BRAIN -> {
+                item {
+                    var result by remember { mutableStateOf<String?>(null) }
+                    Section("Cérebro (IA)") {
+                        Segmented(listOf("chatgpt" to "Conta ChatGPT", "proxy" to "Proxy / API"), cfg.llm.provider) { v ->
+                            up { it.copy(llm = it.llm.copy(provider = v)) }
+                        }
+                        if (cfg.llm.provider == "chatgpt") {
+                            val chatStatus by graph.chatgpt.status.collectAsState()
+                            Hint("Usa o seu plano ChatGPT Plus/Pro direto (login oficial), sem proxy, em qualquer rede. Gasta a cota do Codex; limite o robô em chatgpt.com/settings/usage.")
+                            Hint(chatStatus)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilledTonalButton(onClick = { graph.chatgpt.startSignIn() }) { Text(if (graph.chatgpt.signedIn) "Entrar de novo" else "Entrar com ChatGPT") }
+                                if (graph.chatgpt.signedIn) TextButton(onClick = { graph.chatgpt.signOut() }) { Text("Sair") }
+                            }
+                        } else {
+                            Hint("Endpoint compatível com OpenAI. Ex.: CLIProxyAPI no PC (http://IP-DO-PC:8317/v1), Gemini, Groq, Ollama…")
+                            Field("Base URL", cfg.llm.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(llm = it.llm.copy(baseUrl = v.trim())) } }
+                            Field("API key", cfg.llm.apiKey, secret = true) { v -> up { it.copy(llm = it.llm.copy(apiKey = v.trim())) } }
+                        }
+                        Field("Modelo", cfg.llm.model) { v -> up { it.copy(llm = it.llm.copy(model = v.trim())) } }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = {
+                                result = "testando…"
+                                scope.launch {
+                                    result = runCatching { graph.llm.listModels(graph.config.current.llm) }
+                                        .fold({ "Conectado ✓  Modelos: " + it.joinToString().ifBlank { "(nenhum listado)" } }, { "Erro: ${it.message}" })
+                                }
+                            }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Testar conexão") }
+                            TextButton(onClick = { graph.brain.clearHistory(); result = "Conversa reiniciada" }) { Text("Limpar conversa") }
+                        }
+                        result?.let { Hint(it) }
+                    }
+                }
+                item {
+                    Section("Personalidade") {
+                        Field("Nome do assistente", cfg.personality.name) { v -> if (v.isNotBlank()) up { it.copy(personality = it.personality.copy(name = v.trim())) } }
+                        Field("Seu nome", cfg.personality.userName) { v -> up { it.copy(personality = it.personality.copy(userName = v.trim())) } }
+                        Label("Tom das respostas")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TONE_LABELS.forEach { (key, label) ->
+                                FilterChip(selected = cfg.personality.tone == key, onClick = { up { it.copy(personality = it.personality.copy(tone = key)) } }, label = { Text(label) })
+                            }
+                        }
+                        if (cfg.personality.tone == "custom") {
+                            Field("Descreva o tom (ex.: fala como um pirata)", cfg.personality.customTone, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(customTone = v)) } }
+                        }
+                        Label("Piadinhas sobre o assunto")
+                        Segmented(listOf("auto" to "Auto", "always" to "Sempre", "never" to "Nunca"), cfg.personality.jokes) { v ->
+                            up { it.copy(personality = it.personality.copy(jokes = v)) }
+                        }
+                        Hint("Auto: só nos tons descontraído, sarcástico, dramático e alegre. Nunca em assuntos sérios.")
+                        SwitchRow("Lembretes com frases criativas", "A IA reescreve cada lembrete no tom escolhido (sem IA, usa frases prontas)", cfg.reminders.aiPhrases) { v ->
+                            up { it.copy(reminders = it.reminders.copy(aiPhrases = v)) }
+                        }
+                        Label("Tamanho das respostas")
+                        Segmented(listOf("short" to "Curta", "medium" to "Média", "detailed" to "Detalhada"), cfg.personality.verbosity) { v ->
+                            up { it.copy(personality = it.personality.copy(verbosity = v)) }
+                        }
+                        Field("Jeito de ser", cfg.personality.traits, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(traits = v)) } }
+                        Field("Idioma (ex. pt-BR)", cfg.personality.language) { v -> up { it.copy(personality = it.personality.copy(language = v.trim())) } }
+                        Field("Instruções extras", cfg.personality.extraInstructions, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(extraInstructions = v)) } }
+                    }
+                }
+                item {
+                    Section("Pesquisa e clima") {
+                        Segmented(listOf("duckduckgo" to "DuckDuckGo", "searxng" to "SearXNG", "brave" to "Brave", "tavily" to "Tavily"), cfg.search.provider) { v ->
+                            up { it.copy(search = it.search.copy(provider = v)) }
+                        }
+                        when (cfg.search.provider) {
+                            "searxng" -> Field("URL do SearXNG", cfg.search.searxngUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(search = it.search.copy(searxngUrl = v.trim())) } }
+                            "brave" -> Field("Brave API key", cfg.search.braveApiKey, secret = true) { v -> up { it.copy(search = it.search.copy(braveApiKey = v.trim())) } }
+                            "tavily" -> Field("Tavily API key", cfg.search.tavilyApiKey, secret = true) { v -> up { it.copy(search = it.search.copy(tavilyApiKey = v.trim())) } }
+                        }
+                        Field("Local padrão (cidade, estado, país)", cfg.weather.defaultLocation) { v -> up { it.copy(weather = it.weather.copy(defaultLocation = v.trim())) } }
+                    }
+                }
+            }
+            SettingsTab.VOICE -> {
+                item {
+                    Section("Voz (fala)") {
+                        Label("Efeito robótico")
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ROBOT_VOICES.forEach { (key, label) ->
+                                FilterChip(selected = cfg.tts.robotVoice == key, onClick = { up { it.copy(tts = it.tts.copy(robotVoice = key)) } }, label = { Text(label) })
+                            }
+                        }
+                        Button(onClick = { graph.scope.launch { graph.runtime.say("Bip bop! Sistemas online. Eu sou ${cfg.personality.name}, e essa é a minha voz de robô.", Emotion.HAPPY) } }) {
+                            Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Testar voz")
+                        }
+                        Segmented(listOf("android" to "Sistema", "openai" to "OpenAI / Kokoro", "elevenlabs" to "ElevenLabs"), cfg.tts.provider) { v ->
+                            up { it.copy(tts = it.tts.copy(provider = v)) }
+                        }
+                        when (cfg.tts.provider) {
+                            "openai" -> {
+                                Hint("OpenAI ou qualquer servidor compatível (/audio/speech), ex. Kokoro-FastAPI local: http://IP:8880/v1, modelo kokoro, voz pf_dora.")
+                                Field("Base URL", cfg.tts.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(tts = it.tts.copy(baseUrl = v.trim())) } }
+                                Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
+                                Field("Modelo", cfg.tts.model) { v -> up { it.copy(tts = it.tts.copy(model = v.trim())) } }
+                                Field("Voz", cfg.tts.voice) { v -> up { it.copy(tts = it.tts.copy(voice = v.trim())) } }
+                                Field("Estilo da voz (gpt-4o-mini-tts)", cfg.tts.instructions, singleLine = false) { v -> up { it.copy(tts = it.tts.copy(instructions = v)) } }
+                            }
+                            "elevenlabs" -> {
+                                Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
+                                Field("Voice ID", cfg.tts.elevenLabsVoiceId) { v -> up { it.copy(tts = it.tts.copy(elevenLabsVoiceId = v.trim())) } }
+                                Field("Modelo", cfg.tts.elevenLabsModel) { v -> up { it.copy(tts = it.tts.copy(elevenLabsModel = v.trim())) } }
+                            }
+                            else -> {
+                                Hint("Voz do sistema. Para uma voz melhor sem custo, instale/ative vozes de alta qualidade nas configurações de TTS do Android, ou use Kokoro local.")
+                                Field("Nome da voz (vazio = melhor disponível)", cfg.tts.androidVoice) { v -> up { it.copy(tts = it.tts.copy(androidVoice = v.trim())) } }
+                                SwitchRow("Preferir voz masculina", "Escolhe automaticamente uma voz masculina quando o Android informar essa opção.", cfg.tts.androidPreferMale) { v ->
+                                    up { it.copy(tts = it.tts.copy(androidPreferMale = v)) }
+                                }
+                                SwitchRow("Voz robótica", "Baixa um pouco o tom e deixa o ritmo mais sintético.", cfg.tts.androidRobot) { v ->
+                                    up { it.copy(tts = it.tts.copy(androidRobot = v)) }
+                                }
+                                SliderRow("Tom", cfg.tts.pitch, 0.5f..2f) { v -> up { it.copy(tts = it.tts.copy(pitch = v)) } }
+                            }
+                        }
+                        SliderRow("Velocidade", cfg.tts.speed, 0.6f..1.6f) { v -> up { it.copy(tts = it.tts.copy(speed = v)) } }
+                    }
+                }
+                item {
+                    Section("Reconhecimento de fala") {
+                        Segmented(listOf("android" to "Sistema", "openai" to "Whisper API"), cfg.stt.provider) { v -> up { it.copy(stt = it.stt.copy(provider = v)) } }
+                        if (cfg.stt.provider == "openai") {
+                            Field("Base URL", cfg.stt.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(stt = it.stt.copy(baseUrl = v.trim())) } }
+                            Field("API key", cfg.stt.apiKey, secret = true) { v -> up { it.copy(stt = it.stt.copy(apiKey = v.trim())) } }
+                            Field("Modelo", cfg.stt.model) { v -> up { it.copy(stt = it.stt.copy(model = v.trim())) } }
+                        }
+                        SliderRow("Silêncio para encerrar (ms)", cfg.stt.silenceMs.toFloat(), 500f..3000f, format = { "${it.roundToInt()}" }) { v ->
+                            up { it.copy(stt = it.stt.copy(silenceMs = v.roundToInt())) }
+                        }
+                    }
+                }
+                item {
+                    val state by graph.runtime.state.collectAsState()
+                    Section("Ativação por voz") {
+                        SwitchRow("Palavra de ativação", "Offline (Vosk). Toque no rosto também ativa.", cfg.wake.enabled) { v -> up { it.copy(wake = it.wake.copy(enabled = v)) } }
+                        Hint("Uma frase por linha. {name} = nome do assistente. Ex.: “ei {name}”, “fala {name}”, “bom dia {name}”.")
+                        Field("Frases", cfg.wake.phrases.joinToString("\n"), singleLine = false) { v ->
+                            up { it.copy(wake = it.wake.copy(phrases = v.lines().map(String::trim).filter(String::isNotEmpty))) }
+                        }
+                        Field("Variações do nome (separadas por vírgula)", cfg.wake.nameAliases.joinToString(", ")) { v ->
+                            up { it.copy(wake = it.wake.copy(nameAliases = v.split(',').map(String::trim).filter(String::isNotEmpty))) }
+                        }
+                        SliderRow("Rigor (maior = menos falsos positivos)", cfg.wake.sensitivity, 0.5f..0.95f) { v -> up { it.copy(wake = it.wake.copy(sensitivity = v)) } }
+                        SliderRow("Dormir após inatividade (s, 0 = nunca)", cfg.wake.sleepAfterSeconds.toFloat(), 0f..600f, format = { "${it.roundToInt()}" }) { v ->
+                            up { it.copy(wake = it.wake.copy(sleepAfterSeconds = v.roundToInt())) }
+                        }
+                        SliderRow("Continuar ouvindo após responder (s)", cfg.wake.followUpSeconds.toFloat(), 0f..15f, format = { "${it.roundToInt()}" }) { v ->
+                            up { it.copy(wake = it.wake.copy(followUpSeconds = v.roundToInt())) }
+                        }
+                        state.wakeModelProgress?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+                        Field("URL do modelo Vosk", cfg.wake.modelUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(wake = it.wake.copy(modelUrl = v.trim())) } }
+                        state.error?.let { Hint("Último erro: $it") }
+                    }
+                }
+            }
+            SettingsTab.LIFE -> {
+                item { LifeSection(graph, cfg, up, onClose) }
+            }
+            SettingsTab.PEOPLE -> {
+                item { PeopleSection(graph, cfg, up) }
+            }
+            SettingsTab.HOME -> {
+                item { DevicesSection(graph, cfg, up) }
+                item { WebhooksSection(cfg, up) }
+            }
+            SettingsTab.SYSTEM -> {
+                item { UpdateSection(graph, cfg, up) }
+                item {
+                    var reveal by remember { mutableStateOf(false) }
+                    Section("API local") {
+                        SwitchRow("Ativada", checked = cfg.api.enabled) { v -> up { it.copy(api = it.api.copy(enabled = v)) } }
+                        SwitchRow("Acessível na rede local", "Desligado = só o próprio celular", cfg.api.allowLan) { v -> up { it.copy(api = it.api.copy(allowLan = v)) } }
+                        Field("Porta", cfg.api.port.toString(), keyboard = KeyboardType.Number) { v -> v.toIntOrNull()?.takeIf { it in 1024..65535 }?.let { p -> up { it.copy(api = it.api.copy(port = p)) } } }
+                        val url = "http://${localIp() ?: "IP-DO-CELULAR"}:${cfg.api.port}/"
+                        Hint("Painel web: $url")
+                        Text(
+                            if (reveal) cfg.api.token else "•".repeat(24),
+                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.clickable { reveal = !reveal },
                         )
-                    }
-                }
-                Field("Cor personalizada (#RRGGBB)", cfg.face.color) { v -> if (Regex("#[0-9a-fA-F]{6}").matches(v)) up { it.copy(face = it.face.copy(color = v)) } }
-                SliderRow("Tamanho do rosto", cfg.face.scale, 0.5f..1.5f) { v -> up { it.copy(face = it.face.copy(scale = v)) } }
-                SliderRow("Tamanho dos olhos", cfg.face.eyeSize, 0.6f..1.6f) { v -> up { it.copy(face = it.face.copy(eyeSize = v)) } }
-                SliderRow("Distância entre olhos", cfg.face.eyeSpacing, 0.6f..1.6f) { v -> up { it.copy(face = it.face.copy(eyeSpacing = v)) } }
-                SliderRow("Arredondamento", cfg.face.eyeRoundness, 0f..1f) { v -> up { it.copy(face = it.face.copy(eyeRoundness = v)) } }
-                SliderRow("Altura dos olhos", cfg.face.eyeAspect, 0.6f..1.8f) { v -> up { it.copy(face = it.face.copy(eyeAspect = v)) } }
-                Label("Estilo dos olhos")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EYE_STYLES.forEach { (key, label) ->
-                        FilterChip(selected = cfg.face.eyeStyle == key, onClick = { up { it.copy(face = it.face.copy(eyeStyle = key)) } }, label = { Text(label) })
-                    }
-                }
-                if (cfg.face.eyeStyle != "solid") {
-                    SliderRow("Tamanho da íris", cfg.face.irisSize, 0.3f..0.9f) { v -> up { it.copy(face = it.face.copy(irisSize = v)) } }
-                    SliderRow("Tamanho da pupila", cfg.face.pupilSize, 0.2f..0.8f) { v -> up { it.copy(face = it.face.copy(pupilSize = v)) } }
-                }
-                SwitchRow("Sobrancelhas", "Acompanham a emoção", cfg.face.showBrows) { v -> up { it.copy(face = it.face.copy(showBrows = v)) } }
-                if (cfg.face.showBrows) {
-                    SliderRow("Espessura das sobrancelhas", cfg.face.browThickness, 0.5f..2.5f) { v -> up { it.copy(face = it.face.copy(browThickness = v)) } }
-                }
-                SwitchRow("Bracinhos", "Seguram objetos e fazem gestos", cfg.face.showArms) { v -> up { it.copy(face = it.face.copy(showArms = v)) } }
-                if (cfg.face.showArms) SwitchRow("Mãozinhas", "Mãos redondas na ponta dos braços", cfg.face.armHands) { v -> up { it.copy(face = it.face.copy(armHands = v)) } }
-                SwitchRow("Mostrar boca", checked = cfg.face.showMouth) { v -> up { it.copy(face = it.face.copy(showMouth = v)) } }
-                if (cfg.face.showMouth) {
-                    SliderRow("Tamanho da boca", cfg.face.mouthSize, 0.5f..1.6f) { v -> up { it.copy(face = it.face.copy(mouthSize = v)) } }
-                    SliderRow("Espessura da boca", cfg.face.mouthThickness, 0.5f..3f) { v -> up { it.copy(face = it.face.copy(mouthThickness = v)) } }
-                }
-                SliderRow("Brilho neon", cfg.face.glow, 0f..1.5f) { v -> up { it.copy(face = it.face.copy(glow = v)) } }
-                SliderRow("Posição vertical", cfg.face.offsetY, -0.3f..0.3f) { v -> up { it.copy(face = it.face.copy(offsetY = v)) } }
-            }
-        }
-
-        item {
-            Section("Animação e tela") {
-                SliderRow("Velocidade das expressões", cfg.face.animationStiffness, 30f..400f, format = { "${it.roundToInt()}" }) { v -> up { it.copy(face = it.face.copy(animationStiffness = v)) } }
-                SliderRow("Elasticidade (menor = mais quique)", cfg.face.animationDamping, 0.4f..1f) { v -> up { it.copy(face = it.face.copy(animationDamping = v)) } }
-                SwitchRow("Movimentos espontâneos", "Olhar ao redor, inclinar a cabeça quando ocioso", cfg.face.idleMotion) { v -> up { it.copy(face = it.face.copy(idleMotion = v)) } }
-                SwitchRow("Seguir rosto com a câmera", "Detecção local, nada é gravado", cfg.face.cameraTracking) { v -> up { it.copy(face = it.face.copy(cameraTracking = v)) } }
-                SwitchRow("Legendas", "Mostra o que ouviu e respondeu", cfg.face.showSubtitles) { v -> up { it.copy(face = it.face.copy(showSubtitles = v)) } }
-                SwitchRow("Relógio no canto", "Relógio analógico sempre visível", cfg.face.showClock) { v -> up { it.copy(face = it.face.copy(showClock = v)) } }
-                if (cfg.face.showClock) {
-                    Segmented(listOf("digital" to "Digital retrô", "analog" to "Analógico"), cfg.face.clockStyle) { v ->
-                        up { it.copy(face = it.face.copy(clockStyle = v)) }
-                    }
-                    Segmented(listOf("top_left" to "↖", "top_right" to "↗", "bottom_left" to "↙", "bottom_right" to "↘"), cfg.face.clockCorner) { v ->
-                        up { it.copy(face = it.face.copy(clockCorner = v)) }
-                    }
-                }
-                SwitchRow("Manter tela ligada", checked = cfg.face.keepScreenOn) { v -> up { it.copy(face = it.face.copy(keepScreenOn = v)) } }
-                Label("Orientação")
-                Segmented(listOf("auto" to "Automática", "portrait" to "Vertical", "landscape" to "Horizontal"), cfg.face.orientation) { v ->
-                    up { it.copy(face = it.face.copy(orientation = v)) }
-                }
-            }
-        }
-
-        item {
-            var result by remember { mutableStateOf<String?>(null) }
-            Section("Cérebro (IA)") {
-                Segmented(listOf("chatgpt" to "Conta ChatGPT", "proxy" to "Proxy / API"), cfg.llm.provider) { v ->
-                    up { it.copy(llm = it.llm.copy(provider = v)) }
-                }
-                if (cfg.llm.provider == "chatgpt") {
-                    val chatStatus by graph.chatgpt.status.collectAsState()
-                    Hint("Usa o seu plano ChatGPT Plus/Pro direto (login oficial), sem proxy, em qualquer rede. Gasta a cota do Codex; limite o robô em chatgpt.com/settings/usage.")
-                    Hint(chatStatus)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { graph.chatgpt.startSignIn() }) { Text(if (graph.chatgpt.signedIn) "Entrar de novo" else "Entrar com ChatGPT") }
-                        if (graph.chatgpt.signedIn) TextButton(onClick = { graph.chatgpt.signOut() }) { Text("Sair") }
-                    }
-                } else {
-                    Hint("Endpoint compatível com OpenAI. Ex.: CLIProxyAPI no PC (http://IP-DO-PC:8317/v1), Gemini, Groq, Ollama…")
-                    Field("Base URL", cfg.llm.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(llm = it.llm.copy(baseUrl = v.trim())) } }
-                    Field("API key", cfg.llm.apiKey, secret = true) { v -> up { it.copy(llm = it.llm.copy(apiKey = v.trim())) } }
-                }
-                Field("Modelo", cfg.llm.model) { v -> up { it.copy(llm = it.llm.copy(model = v.trim())) } }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = {
-                        result = "testando…"
-                        scope.launch {
-                            result = runCatching { graph.llm.listModels(graph.config.current.llm) }
-                                .fold({ "Conectado ✓  Modelos: " + it.joinToString().ifBlank { "(nenhum listado)" } }, { "Erro: ${it.message}" })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = { copy(context, cfg.api.token) }) { Text("Copiar token") }
+                            TextButton(onClick = { graph.config.regenerateToken() }) { Text("Gerar novo") }
                         }
-                    }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Testar conexão") }
-                    TextButton(onClick = { graph.brain.clearHistory(); result = "Conversa reiniciada" }) { Text("Limpar conversa") }
-                }
-                result?.let { Hint(it) }
-            }
-        }
-
-        item {
-            Section("Personalidade") {
-                Field("Nome do assistente", cfg.personality.name) { v -> if (v.isNotBlank()) up { it.copy(personality = it.personality.copy(name = v.trim())) } }
-                Field("Seu nome", cfg.personality.userName) { v -> up { it.copy(personality = it.personality.copy(userName = v.trim())) } }
-                Label("Tom das respostas")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TONE_LABELS.forEach { (key, label) ->
-                        FilterChip(selected = cfg.personality.tone == key, onClick = { up { it.copy(personality = it.personality.copy(tone = key)) } }, label = { Text(label) })
                     }
-                }
-                if (cfg.personality.tone == "custom") {
-                    Field("Descreva o tom (ex.: fala como um pirata)", cfg.personality.customTone, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(customTone = v)) } }
-                }
-                Label("Piadinhas sobre o assunto")
-                Segmented(listOf("auto" to "Auto", "always" to "Sempre", "never" to "Nunca"), cfg.personality.jokes) { v ->
-                    up { it.copy(personality = it.personality.copy(jokes = v)) }
-                }
-                Hint("Auto: só nos tons descontraído, sarcástico, dramático e alegre. Nunca em assuntos sérios.")
-                SwitchRow("Lembretes com frases criativas", "A IA reescreve cada lembrete no tom escolhido (sem IA, usa frases prontas)", cfg.reminders.aiPhrases) { v ->
-                    up { it.copy(reminders = it.reminders.copy(aiPhrases = v)) }
-                }
-                Label("Tamanho das respostas")
-                Segmented(listOf("short" to "Curta", "medium" to "Média", "detailed" to "Detalhada"), cfg.personality.verbosity) { v ->
-                    up { it.copy(personality = it.personality.copy(verbosity = v)) }
-                }
-                Field("Jeito de ser", cfg.personality.traits, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(traits = v)) } }
-                Field("Idioma (ex. pt-BR)", cfg.personality.language) { v -> up { it.copy(personality = it.personality.copy(language = v.trim())) } }
-                Field("Instruções extras", cfg.personality.extraInstructions, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(extraInstructions = v)) } }
-            }
-        }
-
-        item {
-            Section("Voz (fala)") {
-                Label("Efeito robótico")
-                Segmented(listOf("off" to "Nenhum", "light" to "Leve", "classic" to "Clássico", "heavy" to "Pesado"), cfg.tts.robotVoice) { v ->
-                    up { it.copy(tts = it.tts.copy(robotVoice = v)) }
-                }
-                Segmented(listOf("android" to "Sistema", "openai" to "OpenAI / Kokoro", "elevenlabs" to "ElevenLabs"), cfg.tts.provider) { v ->
-                    up { it.copy(tts = it.tts.copy(provider = v)) }
-                }
-                when (cfg.tts.provider) {
-                    "openai" -> {
-                        Hint("OpenAI ou qualquer servidor compatível (/audio/speech), ex. Kokoro-FastAPI local: http://IP:8880/v1, modelo kokoro, voz pf_dora.")
-                        Field("Base URL", cfg.tts.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(tts = it.tts.copy(baseUrl = v.trim())) } }
-                        Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
-                        Field("Modelo", cfg.tts.model) { v -> up { it.copy(tts = it.tts.copy(model = v.trim())) } }
-                        Field("Voz", cfg.tts.voice) { v -> up { it.copy(tts = it.tts.copy(voice = v.trim())) } }
-                        Field("Estilo da voz (gpt-4o-mini-tts)", cfg.tts.instructions, singleLine = false) { v -> up { it.copy(tts = it.tts.copy(instructions = v)) } }
-                    }
-                    "elevenlabs" -> {
-                        Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
-                        Field("Voice ID", cfg.tts.elevenLabsVoiceId) { v -> up { it.copy(tts = it.tts.copy(elevenLabsVoiceId = v.trim())) } }
-                        Field("Modelo", cfg.tts.elevenLabsModel) { v -> up { it.copy(tts = it.tts.copy(elevenLabsModel = v.trim())) } }
-                    }
-                    else -> {
-                        Hint("Voz do sistema. Para uma voz melhor sem custo, instale/ative vozes de alta qualidade nas configurações de TTS do Android, ou use Kokoro local.")
-                        Field("Nome da voz (vazio = melhor disponível)", cfg.tts.androidVoice) { v -> up { it.copy(tts = it.tts.copy(androidVoice = v.trim())) } }
-                        SwitchRow("Preferir voz masculina", "Escolhe automaticamente uma voz masculina quando o Android informar essa opção.", cfg.tts.androidPreferMale) { v ->
-                            up { it.copy(tts = it.tts.copy(androidPreferMale = v)) }
-                        }
-                        SwitchRow("Voz robótica", "Baixa um pouco o tom e deixa o ritmo mais sintético.", cfg.tts.androidRobot) { v ->
-                            up { it.copy(tts = it.tts.copy(androidRobot = v)) }
-                        }
-                        SliderRow("Tom", cfg.tts.pitch, 0.5f..2f) { v -> up { it.copy(tts = it.tts.copy(pitch = v)) } }
-                    }
-                }
-                SliderRow("Velocidade", cfg.tts.speed, 0.6f..1.6f) { v -> up { it.copy(tts = it.tts.copy(speed = v)) } }
-                Button(onClick = { graph.scope.launch { graph.runtime.say("Oi! Eu sou ${cfg.personality.name}. Essa é a minha voz.", Emotion.HAPPY) } }) {
-                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Ouvir voz")
-                }
-            }
-        }
-
-        item {
-            Section("Reconhecimento de fala") {
-                Segmented(listOf("android" to "Sistema", "openai" to "Whisper API"), cfg.stt.provider) { v -> up { it.copy(stt = it.stt.copy(provider = v)) } }
-                if (cfg.stt.provider == "openai") {
-                    Field("Base URL", cfg.stt.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(stt = it.stt.copy(baseUrl = v.trim())) } }
-                    Field("API key", cfg.stt.apiKey, secret = true) { v -> up { it.copy(stt = it.stt.copy(apiKey = v.trim())) } }
-                    Field("Modelo", cfg.stt.model) { v -> up { it.copy(stt = it.stt.copy(model = v.trim())) } }
-                }
-                SliderRow("Silêncio para encerrar (ms)", cfg.stt.silenceMs.toFloat(), 500f..3000f, format = { "${it.roundToInt()}" }) { v ->
-                    up { it.copy(stt = it.stt.copy(silenceMs = v.roundToInt())) }
-                }
-            }
-        }
-
-        item {
-            val state by graph.runtime.state.collectAsState()
-            Section("Ativação por voz") {
-                SwitchRow("Palavra de ativação", "Offline (Vosk). Toque no rosto também ativa.", cfg.wake.enabled) { v -> up { it.copy(wake = it.wake.copy(enabled = v)) } }
-                Hint("Uma frase por linha. {name} = nome do assistente. Ex.: “ei {name}”, “fala {name}”, “bom dia {name}”.")
-                Field("Frases", cfg.wake.phrases.joinToString("\n"), singleLine = false) { v ->
-                    up { it.copy(wake = it.wake.copy(phrases = v.lines().map(String::trim).filter(String::isNotEmpty))) }
-                }
-                Field("Variações do nome (separadas por vírgula)", cfg.wake.nameAliases.joinToString(", ")) { v ->
-                    up { it.copy(wake = it.wake.copy(nameAliases = v.split(',').map(String::trim).filter(String::isNotEmpty))) }
-                }
-                SliderRow("Rigor (maior = menos falsos positivos)", cfg.wake.sensitivity, 0.5f..0.95f) { v -> up { it.copy(wake = it.wake.copy(sensitivity = v)) } }
-                SliderRow("Dormir após inatividade (s, 0 = nunca)", cfg.wake.sleepAfterSeconds.toFloat(), 0f..600f, format = { "${it.roundToInt()}" }) { v ->
-                    up { it.copy(wake = it.wake.copy(sleepAfterSeconds = v.roundToInt())) }
-                }
-                SliderRow("Continuar ouvindo após responder (s)", cfg.wake.followUpSeconds.toFloat(), 0f..15f, format = { "${it.roundToInt()}" }) { v ->
-                    up { it.copy(wake = it.wake.copy(followUpSeconds = v.roundToInt())) }
-                }
-                state.wakeModelProgress?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
-                Field("URL do modelo Vosk", cfg.wake.modelUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(wake = it.wake.copy(modelUrl = v.trim())) } }
-                state.error?.let { Hint("Último erro: $it") }
-            }
-        }
-
-        item {
-            Section("Pesquisa e clima") {
-                Segmented(listOf("duckduckgo" to "DuckDuckGo", "searxng" to "SearXNG", "brave" to "Brave", "tavily" to "Tavily"), cfg.search.provider) { v ->
-                    up { it.copy(search = it.search.copy(provider = v)) }
-                }
-                when (cfg.search.provider) {
-                    "searxng" -> Field("URL do SearXNG", cfg.search.searxngUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(search = it.search.copy(searxngUrl = v.trim())) } }
-                    "brave" -> Field("Brave API key", cfg.search.braveApiKey, secret = true) { v -> up { it.copy(search = it.search.copy(braveApiKey = v.trim())) } }
-                    "tavily" -> Field("Tavily API key", cfg.search.tavilyApiKey, secret = true) { v -> up { it.copy(search = it.search.copy(tavilyApiKey = v.trim())) } }
-                }
-                Field("Local padrão (cidade, estado, país)", cfg.weather.defaultLocation) { v -> up { it.copy(weather = it.weather.copy(defaultLocation = v.trim())) } }
-            }
-        }
-
-        item { UpdateSection(graph, cfg, up) }
-
-        item { LifeSection(graph, cfg, up, onClose) }
-
-        item { PeopleSection(graph, cfg, up) }
-
-        item { DevicesSection(graph, cfg, up) }
-
-        item { WebhooksSection(cfg, up) }
-
-        item {
-            var reveal by remember { mutableStateOf(false) }
-            Section("API local") {
-                SwitchRow("Ativada", checked = cfg.api.enabled) { v -> up { it.copy(api = it.api.copy(enabled = v)) } }
-                SwitchRow("Acessível na rede local", "Desligado = só o próprio celular", cfg.api.allowLan) { v -> up { it.copy(api = it.api.copy(allowLan = v)) } }
-                Field("Porta", cfg.api.port.toString(), keyboard = KeyboardType.Number) { v -> v.toIntOrNull()?.takeIf { it in 1024..65535 }?.let { p -> up { it.copy(api = it.api.copy(port = p)) } } }
-                val url = "http://${localIp() ?: "IP-DO-CELULAR"}:${cfg.api.port}/"
-                Hint("Painel web: $url")
-                Text(
-                    if (reveal) cfg.api.token else "•".repeat(24),
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.clickable { reveal = !reveal },
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { copy(context, cfg.api.token) }) { Text("Copiar token") }
-                    TextButton(onClick = { graph.config.regenerateToken() }) { Text("Gerar novo") }
                 }
             }
         }
@@ -641,7 +701,7 @@ private fun UpdateSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> A
     val context = LocalContext.current
     val status by graph.updater.status.collectAsState()
     Section("Atualizações") {
-        Hint("Ele baixa e instala versões novas sozinho. No PC: ./gradlew publishUpdate e tools/serve-updates.ps1.")
+        Hint("Ele baixa e instala versões novas sozinho (padrão: releases do GitHub do projeto, de qualquer rede).")
         SwitchRow("Atualizar automaticamente", checked = cfg.update.enabled) { v -> up { it.copy(update = it.update.copy(enabled = v)) } }
         Field("URL do latest.json", cfg.update.url, keyboard = KeyboardType.Uri) { v -> up { it.copy(update = it.update.copy(url = v.trim())) } }
         if (!graph.updater.canInstall()) {
@@ -651,7 +711,7 @@ private fun UpdateSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> A
             FilledTonalButton(onClick = { context.startActivity(graph.updater.overlayPermissionIntent()) }) { Text("Permitir reabrir após atualizar") }
         }
         Button(onClick = { scope.launch { graph.updater.checkAndInstall() } }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Verificar agora") }
-        Hint("Versão ${io.github.assistent.BuildConfig.VERSION_NAME} · $status")
+        Hint(if (status.startsWith("Versão")) status else "Versão ${io.github.assistent.BuildConfig.VERSION_NAME} · $status")
     }
 }
 
