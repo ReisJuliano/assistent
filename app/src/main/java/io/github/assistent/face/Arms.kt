@@ -50,6 +50,8 @@ object Arms {
             Scene.DRINK_WATER -> return ArmPose(null, if (t in 1.2f..3.4f) Offset(0.11f, 0.25f) else Offset(0.11f, 0.32f))
             Scene.TAKE_PILL -> return if (t < 2.1f) ArmPose(Offset(-0.14f, 0.2f), Offset(0.12f, 0.3f)) else ArmPose(null, Offset(0.12f, 0.25f))
             Scene.EAT_FOOD -> return ArmPose(Offset(-0.1f, 0.28f), if (t in 1.8f..4.3f) Offset(0.04f, 0.2f) else Offset(0.1f, 0.28f))
+            Scene.CAT_CUDDLE -> if (t > 0.9f) return ArmPose(Offset(-0.13f, 0.36f + sin(t * 1.6f) * 0.01f), Offset(0.13f, 0.36f - sin(t * 1.6f) * 0.01f))
+            Scene.DOG_PAT -> if (t > 1f) return ArmPose(null, Offset(0.55f, 0.1f + abs(sin(t * 5f)) * 0.035f))
             Scene.STRETCH_BREAK -> {
                 val k = if (t < 4.5f) 1f else 0f
                 return if (k > 0f) ArmPose(Offset(-0.56f, -0.38f + sin(t * 2f) * 0.03f), Offset(0.56f, -0.38f - sin(t * 2f) * 0.03f)) else ArmPose()

@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.random.Random
 import kotlin.math.sqrt
 
 /**
@@ -95,6 +96,34 @@ class Interactions(
 
     /** True while music has been heard in the room recently: wake phrases need to be clearer then. */
     val musicPlaying get() = System.currentTimeMillis() - musicHeardAt < 20_000
+
+    /** A sound recognised by [io.github.assistent.voice.SoundEars] (YAMNet). Reacts sometimes, never every time. */
+    fun onSound(kind: String, score: Float) {
+        if (!enabled) return
+        val asleep = state.activity == Activity.SLEEPING
+        android.util.Log.d("Interactions", "sound $kind ${"%.2f".format(score)}")
+        when (kind) {
+            "music" -> { musicHeardAt = System.currentTimeMillis(); if (!asleep) onMusic(phone = false) }
+            "cat" -> if (!asleep && idle && ready("cat", 10 * 60_000) && Random.nextFloat() < 0.7f) react(Scene.CAT_CUDDLE, "cat_heard", CAT_HEARD, 1_000)
+            "dog" -> if (!asleep && idle && ready("dog", 10 * 60_000) && Random.nextFloat() < 0.7f) react(Scene.DOG_PAT, "dog_heard", DOG_HEARD, 1_000)
+            "doorbell", "knock" -> if (!asleep && ready("door", 2 * 60_000)) {
+                runtime.setEmotion(Emotion.SURPRISED, 1_500)
+                runtime.showBubble(Catchphrases.line("door_heard", DOOR_HEARD), keepEmotion = true)
+            }
+            // Someone sneezed right here: answering out loud is natural (there is a person).
+            "sneeze" -> if (!asleep && ready("sneeze", 60_000)) runtime.showBubble(Catchphrases.line("bless_you", BLESS_YOU), speak = true)
+            "laughter" -> if (!asleep && idle && ready("laugh", 5 * 60_000) && Random.nextBoolean()) runtime.setEmotion(Emotion.JOY, 2_500)
+            "applause" -> if (!asleep && idle && ready("applause", 5 * 60_000)) runtime.setEmotion(Emotion.JOY, 2_500)
+            "baby_cry" -> if (!asleep && ready("cry", 10 * 60_000)) {
+                runtime.setEmotion(Emotion.SAD, 3_000)
+                runtime.showBubble(Catchphrases.line("cry_heard", CRY_HEARD), keepEmotion = true)
+            }
+            "thunder" -> if (ready("thunder", 5 * 60_000)) {
+                if (asleep) runtime.onNoiseWhileSleeping()
+                else { runtime.setEmotion(Emotion.SURPRISED, 1_500); runtime.showBubble(Catchphrases.line("thunder_heard", THUNDER_HEARD), keepEmotion = true) }
+            }
+        }
+    }
 
     fun onAudioLevel(rms: Float) {
         // Sudden loud sound (clap, door) → a little start.
@@ -367,6 +396,12 @@ class Interactions(
         private val TOO_CLOSE = listOf("Opa, muito perto! 😳", "Uou, que zoom!", "Ei, espaço pessoal! 😅", "Tô vendo seu nariz por dentro!")
         private val SHY = listOf("Que foi? Tô com vergonha… 😳", "Para de me encarar, hihi.", "Tem alguma coisa no meu rosto?", "Assim eu fico sem graça…")
         private val BYE = listOf("Tchau, {n}! 👋", "Até mais, {n}!", "Volta logo, {n}!", "Vai com Deus, {n}!")
+        private val CAT_HEARD = listOf("Miau? Cadê o gatinho?", "Ouvi um miado! Vem cá, bichano.", "Gatinho no colo, que fofura.")
+        private val DOG_HEARD = listOf("Au au? Oi, cachorrinho!", "Quem é o bom garoto?", "Ouvi um latido! Vem cá, peludo.")
+        private val DOOR_HEARD = listOf("Tem alguém na porta!", "Opa, chegou visita?", "Ouvi a porta!")
+        private val BLESS_YOU = listOf("Saúde!", "Saúde! Quer um lencinho?", "Saúde! Se cuida, hein.")
+        private val CRY_HEARD = listOf("Ih, tem alguém chorando…", "Ouvi um chorinho. Tá tudo bem?")
+        private val THUNDER_HEARD = listOf("Que trovão!", "Eita, que barulhão lá fora!", "Esse trovão me assustou.")
         private val ALONE_CAMERA = listOf(
             "Não tô vendo ninguém… só se for fantasma.",
             "Acho que a casa está vazia. Ou vocês estão muito bem escondidos.",

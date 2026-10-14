@@ -255,6 +255,9 @@ data class LifeConfig(
     val mimic: Boolean = true,
     /** Dance to music heard in the room (microphone analysis; can be fooled by noise). Phone music always counts. */
     val roomMusic: Boolean = true,
+    /** Recognise sounds in the room (YAMNet on the phone): cat, dog, doorbell, sneeze, music vs speech... */
+    val soundEvents: Boolean = true,
+    val soundModelUrl: String = "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite",
     /** Lower camera/frame rates and lighter processing to keep the phone cool. */
     val powerSave: Boolean = true,
     /** Scene keys allowed to play on their own. Empty = all. */

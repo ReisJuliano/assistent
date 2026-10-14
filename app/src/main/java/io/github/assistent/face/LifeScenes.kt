@@ -85,7 +85,9 @@ enum class Scene(val key: String, val seconds: Float, val kind: Kind, val label:
     DRINK_WATER("drink_water", 5.5f, Kind.REACT, "Beber agua"),
     TAKE_PILL("take_pill", 6f, Kind.REACT, "Tomar remedio"),
     EAT_FOOD("eat_food", 6f, Kind.REACT, "Comer"),
-    STRETCH_BREAK("stretch_break", 6f, Kind.REACT, "Alongar");
+    STRETCH_BREAK("stretch_break", 6f, Kind.REACT, "Alongar"),
+    CAT_CUDDLE("cat_cuddle", 6.5f, Kind.REACT, "Gatinho no colo"),
+    DOG_PAT("dog_pat", 6f, Kind.REACT, "Carinho no cachorro");
 
     /** AWAKE: hobbies while idle. DREAM: while sleeping. WAKE: right after waking. REACT: answer to something a person did. */
     enum class Kind { AWAKE, DREAM, WAKE, REACT }
@@ -381,6 +383,21 @@ object Life {
                 val chew = t in 1.8f..4.3f
                 if (chew) SceneFrame(neutral.eyes(closedHappy).copy(mouthOpen = 0.12f * abs(sin(t * 10f)), mouthWidth = 0.42f, mouthCurve = 0.18f), dy = -0.04f)
                 else SceneFrame(happy.copy(mouthCurve = 0.35f), gaze = Offset(0f, 0.55f), dy = -0.04f)
+            }
+
+            // Heard a meow: looks around, then hugs a purring kitten.
+            Scene.CAT_CUDDLE -> when {
+                t < 1f -> SceneFrame(surprised.copy(mouthOpen = 0.12f, browRaise = 0.5f), gaze = Offset(sin(t * 7f) * 0.6f, -0.1f), stiffness = 420f)
+                else -> SceneFrame(
+                    joy.eyes(closedHappy).copy(blush = 1f, mouthCurve = 0.6f, mouthWidth = 0.5f, tilt = 8f + sin(t * 1.6f) * 3f, bounce = 0f),
+                    gaze = Offset(0f, 0.45f), dy = -0.05f,
+                )
+            }
+
+            // Heard a bark: looks to the side where the puppy sits and pats its head.
+            Scene.DOG_PAT -> when {
+                t < 0.9f -> SceneFrame(surprised.copy(mouthOpen = 0.1f, browRaise = 0.45f), gaze = Offset(0.7f, 0.2f), stiffness = 420f)
+                else -> SceneFrame(happy.copy(mouthCurve = 0.7f, mouthWidth = 0.75f, tilt = -5f), gaze = Offset(0.75f, 0.35f), dx = -0.03f)
             }
 
             Scene.STRETCH_BREAK -> SceneFrame(
@@ -784,6 +801,20 @@ internal fun DrawScope.drawSceneProps(
 
         Scene.EAT_FOOD -> sandwich(Offset(g.cx, g.mouthY + u * 0.04f), u, if (t > 4.2f) 2 else if (t > 2.5f) 1 else 0, ::stroke, ::fill)
 
+        Scene.CAT_CUDDLE -> if (t > 0.9f) {
+            val rise = ease(prog(t, 0.9f, 1.5f))
+            kitten(Offset(g.cx, g.mouthY + u * (0.42f - 0.2f * rise)), u, t, ::stroke, ::fill)
+            // Little purr lines.
+            if (t > 1.8f) for (i in 0..2) {
+                val k = ((t * 0.7f + i / 3f) % 1f)
+                val x = g.cx + u * (0.2f + k * 0.08f)
+                val y = g.mouthY + u * (0.12f - k * 0.1f)
+                stroke(Path().apply { moveTo(x, y); quadraticTo(x + u * 0.015f, y - u * 0.012f, x + u * 0.03f, y) }, sw * 0.6f, 1f - k)
+            }
+        }
+
+        Scene.DOG_PAT -> puppy(Offset(g.cx + u * 0.6f, g.mouthY + u * 0.22f), u, t, ::stroke, ::fill)
+
         Scene.STRETCH_BREAK -> if (t < 4.5f) {
             for (side in intArrayOf(-1, 1)) {
                 stroke(Path().apply {
@@ -991,6 +1022,58 @@ private fun DrawScope.notebook(c: Offset, u: Float, t: Float, stroke: Pen) {
     val px = c.x - w * 0.35f + ((t * 0.12f) % 1f) * w * 0.7f + sin(t * 25f) * u * 0.006f
     val py = c.y - h * 0.05f + cos(t * 19f) * u * 0.004f
     stroke(Path().apply { moveTo(px, py); lineTo(px + u * 0.05f, py - u * 0.07f) }, u * 0.012f, 1f)
+}
+
+/** Round kitten held against the chest: ears, closed happy eyes, whiskers, paws over the arms, swishing tail. */
+private fun DrawScope.kitten(c: Offset, u: Float, t: Float, stroke: Pen, fill: Fill) {
+    val r = u * 0.07f
+    val head = Path().apply { addOval(Rect(c, r)) }
+    fill(head, 0.15f); stroke(head, u * 0.01f, 1f)
+    for (side in intArrayOf(-1, 1)) {
+        stroke(Path().apply {
+            moveTo(c.x + side * r * 0.45f, c.y - r * 0.85f)
+            lineTo(c.x + side * r * 0.85f, c.y - r * 1.45f)
+            lineTo(c.x + side * r * 0.95f, c.y - r * 0.45f)
+        }, u * 0.01f, 1f)
+        // Closed, content eyes.
+        stroke(Path().apply {
+            moveTo(c.x + side * r * 0.5f, c.y - r * 0.05f)
+            quadraticTo(c.x + side * r * 0.35f, c.y - r * 0.25f, c.x + side * r * 0.2f, c.y - r * 0.05f)
+        }, u * 0.007f, 1f)
+        for (k in 0..1) stroke(Path().apply {
+            moveTo(c.x + side * r * 0.35f, c.y + r * (0.3f + k * 0.15f)); lineTo(c.x + side * r * 1.15f, c.y + r * (0.2f + k * 0.3f))
+        }, u * 0.004f, 0.7f)
+    }
+    stroke(Path().apply { moveTo(c.x - r * 0.1f, c.y + r * 0.25f); quadraticTo(c.x, c.y + r * 0.4f, c.x + r * 0.1f, c.y + r * 0.25f) }, u * 0.006f, 1f)
+    val tail = sin(t * 3f) * r * 0.5f
+    stroke(Path().apply {
+        moveTo(c.x + r * 0.9f, c.y + r * 1.3f)
+        quadraticTo(c.x + r * 1.9f, c.y + r * 1.1f + tail, c.x + r * 1.7f, c.y + r * 0.2f + tail)
+    }, u * 0.01f, 1f)
+}
+
+/** Puppy sitting beside the robot, tongue out, tail wagging. */
+private fun DrawScope.puppy(c: Offset, u: Float, t: Float, stroke: Pen, fill: Fill) {
+    val s = u * 0.06f
+    val body = Path().apply { addOval(Rect(Offset(c.x - s * 0.8f, c.y - s * 0.4f), Size(s * 1.6f, s * 1.5f))) }
+    fill(body, 0.12f); stroke(body, u * 0.01f, 1f)
+    val head = Offset(c.x - s * 0.15f, c.y - s * 0.95f)
+    val hp = Path().apply { addOval(Rect(head, s * 0.62f)) }
+    fill(hp, 0.15f); stroke(hp, u * 0.01f, 1f)
+    // Floppy ears.
+    for (side in intArrayOf(-1, 1)) stroke(Path().apply {
+        moveTo(head.x + side * s * 0.45f, head.y - s * 0.4f)
+        quadraticTo(head.x + side * s * 0.95f, head.y - s * 0.1f, head.x + side * s * 0.65f, head.y + s * 0.45f)
+    }, u * 0.011f, 1f)
+    for (side in intArrayOf(-1, 1)) fill(Path().apply { addOval(Rect(Offset(head.x + side * s * 0.22f, head.y - s * 0.08f), s * 0.07f)) }, 1f)
+    fill(Path().apply { addOval(Rect(Offset(head.x, head.y + s * 0.18f), s * 0.1f)) }, 1f)
+    val pant = 0.5f + 0.5f * sin(t * 12f)
+    stroke(Path().apply { moveTo(head.x + s * 0.05f, head.y + s * 0.32f); lineTo(head.x + s * 0.08f, head.y + s * (0.45f + 0.08f * pant)) }, u * 0.012f, 1f)
+    val wag = sin(t * 14f) * s * 0.35f
+    stroke(Path().apply {
+        moveTo(c.x + s * 0.75f, c.y + s * 0.6f)
+        quadraticTo(c.x + s * 1.3f, c.y + s * 0.4f, c.x + s * 1.4f + wag, c.y - s * 0.1f)
+    }, u * 0.01f, 1f)
 }
 
 private fun DrawScope.lightbulb(c: Offset, u: Float, t: Float, stroke: Pen, fill: Fill) {

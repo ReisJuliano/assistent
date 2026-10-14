@@ -125,6 +125,10 @@ class WakeWordEngine(
         onAttention: () -> Unit = {}, onDismiss: () -> Unit = {}, onAudio: (Float) -> Unit = {},
         /** True while the robot sleeps: then only a very clear call wakes it up. */
         strict: () -> Boolean = { false },
+        /** Raw microphone frames, for sound recognition on the same stream. */
+        onPcm: (ShortArray, Int) -> Unit = { _, _ -> },
+        /** True while music plays in the room: song lyrics must not sound like someone calling it. */
+        music: () -> Boolean = { false },
     ): String =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             val m = ensureModel()
@@ -165,6 +169,7 @@ class WakeWordEngine(
                     }
                     val rms = (kotlin.math.sqrt(sum / n) / 32768.0).toFloat()
                     onAudio(rms)
+                    onPcm(buf, n)
                     capture?.let { c ->
                         // Only voiced frames count towards enrollment audio.
                         if (rms > maxOf(0.008f, noiseFloor * 3f)) {
@@ -185,7 +190,9 @@ class WakeWordEngine(
                     if (r.acceptWaveForm(buf, n)) {
                         val heard = field(r.result, "text")
                         // In grammar mode the decoder can only output our phrases (or [unk]), so a looser match is safe.
-                        val remainder = if (heard.contains("[unk]") && usingGrammar) null else match(heard, phrases, if (usingGrammar) 0.62f else threshold.coerceAtMost(0.72f))
+                        // With music playing only a near-exact call counts (lyrics are full of almost-names).
+                        val need = when { music() -> 0.86f; usingGrammar -> 0.62f; else -> threshold.coerceAtMost(0.72f) }
+                        val remainder = if (heard.contains("[unk]") && usingGrammar) null else match(heard, phrases, need)
                         if (heard.isNotBlank()) Log.d(TAG, "heard='$heard' grammar=$usingGrammar match=${remainder != null}")
                         // React before returning the completed recognition result. Waiting for the caller to
                         // resume after this branch made a valid wake phrase look unresponsive on the face.
@@ -199,7 +206,7 @@ class WakeWordEngine(
                             attention = false
                             onDismiss()
                         }
-                    } else if (!attention) {
+                    } else if (!attention && !music()) {
                         // Hand off as soon as the wake phrase is stable in a partial result. This releases
                         // AudioRecord before Listener opens the microphone for the actual command.
                         val partial = match(

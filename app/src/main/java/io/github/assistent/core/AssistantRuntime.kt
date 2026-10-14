@@ -387,7 +387,8 @@ class AssistantRuntime(
         while (text.isNotBlank()) {
             chat(text, speak = true)
             val follow = config.current.wake.followUpSeconds
-            if (follow <= 0 || state.value.activity == Activity.SLEEPING) break
+            // With music on, the song would be taken as the next question: wait for the wake phrase instead.
+            if (follow <= 0 || state.value.activity == Activity.SLEEPING || isMusicPlaying()) break
             text = listen(follow * 1000L)
             if (isGoodNight(text)) { sleep(); return }
             if (isStop(text)) { stopEverything(); return }
@@ -444,6 +445,9 @@ class AssistantRuntime(
             showBubble(text, speak = true, emotion = Emotion.SURPRISED)
         }
     }
+
+    /** Set by the app graph: music is playing in the room (no hands-free follow-up then). */
+    var isMusicPlaying: () -> Boolean = { false }
 
     /** Set by the app graph: personalised reminder lines. */
     var reminderPhrases: ReminderPhrases? = null

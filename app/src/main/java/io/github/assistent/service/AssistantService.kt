@@ -144,7 +144,9 @@ class AssistantService : LifecycleService() {
             // Sounded like the name but was not: go back to what it was doing.
             onDismiss = { runtime.setActivity(if (wasSleeping) Activity.SLEEPING else Activity.IDLE) },
             onAudio = graph.interactions::onAudioLevel,
+            onPcm = graph.ears::feed,
             strict = { runtime.state.value.activity == Activity.SLEEPING },
+            music = { graph.interactions.musicPlaying },
         )
     }
 

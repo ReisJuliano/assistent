@@ -227,6 +227,16 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
   line asking for one short joke about the subject itself (search results, weather, facts) after the useful answer,
   never on sad/health/emergency topics or at the user's expense.
 
+### Hearing (`voice/SoundEars.kt`, `core/MusicDetector.kt`)
+
+- YAMNet (AudioSet, 521 classes; `life.soundModelUrl`, downloaded at runtime) classifies the last ~1 s of the wake-word
+  microphone stream once a second (`onPcm` feed). `SoundEars.GROUPS` maps class indices to kinds (speech, music, cat,
+  dog, doorbell, knock, sneeze, laughter, baby_cry, thunder...) → `Interactions.onSound` reacts sometimes
+  (`CAT_CUDDLE` kitten in the arms, `DOG_PAT`, "Saúde!", door/thunder bubbles). `POST /sounds/classify` (WAV) shows the
+  scores; ESC-50 clips scored cat 0.98, dog 0.89, knock 0.94, thunder 0.85, applause 0.89.
+- Music (YAMNet or the beat detector) sets `Interactions.musicPlaying`: wake phrases then need a near-exact match
+  (0.86, no partial hand-off) and there is no hands-free follow-up, so lyrics are not taken as commands.
+
 ### Phrases (`core/PhrasePool.kt`, `core/Catchphrases.kt`)
 
 - Every short line said spontaneously comes from a **category** with hand-written examples. The AI generates batches

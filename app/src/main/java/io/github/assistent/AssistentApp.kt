@@ -210,8 +210,12 @@ class AppGraph(context: Context) {
         tools.register(CallRoomTool(m))
         m.start()
     }
+    val ears = io.github.assistent.voice.SoundEars(context, config, http, scope)
     val interactions = Interactions(context, config, runtime, scope).also { i ->
         i.start()
+        ears.onSound = i::onSound
+        ears.start()
+        runtime.isMusicPlaying = { i.musicPlaying }
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
     }

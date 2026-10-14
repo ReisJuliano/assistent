@@ -546,6 +546,9 @@ private fun LifeSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> App
             SliderRow("Intervalo mínimo entre atividades", (life.minGapSeconds / 60f).coerceAtLeast(1f), 1f..60f, format = { "${it.roundToInt()} min" }) { v ->
                 up { it.copy(life = it.life.copy(minGapSeconds = v.roundToInt() * 60, maxGapSeconds = maxOf(it.life.maxGapSeconds, v.roundToInt() * 60 + 60))) }
             }
+            SwitchRow("Reagir a sons", "Gato, cachorro, campainha, espirro, trovão… (reconhecimento no próprio celular)", life.soundEvents) { v ->
+                up { it.copy(life = it.life.copy(soundEvents = v)) }
+            }
             SwitchRow("Sonhos", "Enquanto dorme", life.dreams) { v -> up { it.copy(life = it.life.copy(dreams = v)) } }
             SwitchRow("Acordar sozinho às vezes", "Acorda, olha em volta e pergunta se tem alguém", life.selfWake) { v -> up { it.copy(life = it.life.copy(selfWake = v)) } }
             SwitchRow("Reações ao acordar", "Susto, tontura, sonolência", life.wakeReactions) { v -> up { it.copy(life = it.life.copy(wakeReactions = v)) } }

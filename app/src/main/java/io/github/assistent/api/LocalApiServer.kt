@@ -539,6 +539,11 @@ class LocalApiServer(private val g: AppGraph) {
                     val audio = io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>())
                     call.respond(buildJsonObject { put("result", g.voiceIdentity.enroll(personId, audio)) })
                 })
+                // What the robot hears in a WAV clip (YAMNet groups and scores).
+                post("/sounds/classify", guard {
+                    val r = g.ears.classifyClip(io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>()))
+                    call.respond(buildJsonObject { r.forEach { (k, v) -> put(k, v) } })
+                })
                 post("/voice/identify", guard {
                     val m = g.voiceIdentity.identify(io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>()))
                     call.respond(buildJsonObject { put("person", m.person?.name ?: ""); put("score", m.score) })
