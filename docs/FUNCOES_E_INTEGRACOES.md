@@ -54,6 +54,14 @@ As cenas usam a mao existente em `Arms.pose` e props de
 O teste de cada item deve iniciar a acao por voz e confirmar por API/evento e
 por screenshot que a animacao acompanha o estado real.
 
+### Registro (2026-10-14): regra transversal entregue
+
+- `core/Operations.kt` + `ui/OperationsHud.kt`: toda chamada de ferramenta (voz, API, mesh) vira operação com id,
+  rótulo, ícone por tipo e estado real (girando → ok / falhou / "?" sem confirmação / cancelada), eventos SSE
+  `tool_*`, `GET /operations`, `POST /operations/cancel`; "parar" cancela tudo. Ferramentas da mesma rodada rodam em
+  paralelo. Verificado no emulador (clima + pesquisa simultâneos, falha mostrada como falha).
+- Falta: cenas/props específicas por ferramenta (lupa, microfone, rede de nós) além do chip e da atividade do rosto.
+
 ## Status
 
 - `[x]` fluxo completo implementado e verificado
@@ -224,7 +232,11 @@ de nunca confirmar tarefa nao executada.
 
 ## Bloco 8 - Visao, reconhecimento e sensores
 
-Status: `[ ]`
+Status: `[~]`
+
+Entregue: aceno real (MediaPipe, palma aberta indo e voltando), joinha/paz/te amo, sons (YAMNet: campainha, choro,
+animais, tosse, alarmes, vidro via classes), objetos e pessoas (EfficientDet), roupa do dia, voz no ambiente, rosto
+alinhado. Falta: OCR, descrição do ambiente pela IA, objetos perdidos, validação em aparelho real.
 
 Reconhecimento facial continuo e rastreamento da pessoa fixada, voz por pessoa,
 gestos, aceno, palmas, campainha, choro, animais, tosse, alarmes, vidro,
