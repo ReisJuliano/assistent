@@ -1,212 +1,212 @@
-# Funções e integrações do assistente
+# Funcoes e integracoes do assistente
 
-`[x]` concluída · `[~]` em desenvolvimento · `[ ]` pendente
+Este documento e um plano de implementacao por blocos. Um bloco representa uma
+experiencia completa: suas partes relacionadas entram juntas, sao testadas juntas
+e so recebem `[x]` quando o fluxo inteiro funciona. Nao marcar uma subfuncao
+isolada como concluida apenas porque sua API foi criada.
 
-## Casa e dispositivos
+## Regras para qualquer bloco
 
-- `[~]` Wake-on-LAN para PCs, TVs e outros dispositivos.
-- `[ ]` Verificar se o dispositivo acordou por ping, HTTP, ADB ou protocolo próprio.
-- `[ ]` Android TV por ADB: abrir apps, enviar comandos, volume, pausa, reprodução, busca e desligamento.
-- `[ ]` Android TV por Google Cast: descobrir telas e enviar filmes, vídeos, músicas e fotos.
-- `[ ]` Controle de Samsung/Tizen.
-- `[ ]` Controle de LG/webOS.
-- `[ ]` Controle de Roku.
-- `[ ]` Controle de Chromecast.
-- `[ ]` Controle de projetores e receivers.
-- `[ ]` Parear dispositivos Bluetooth.
-- `[ ]` Selecionar caixa, fone ou receiver Bluetooth por nome.
-- `[ ]` Play, pausa, volume, próxima faixa e faixa anterior via Bluetooth.
-- `[ ]` Trocar automaticamente para o melhor dispositivo de áudio disponível.
-- `[ ]` Descobrir dispositivos da rede automaticamente.
-- `[ ]` Apelidar dispositivos por cômodo e pessoa.
-- `[ ]` Home Assistant nativo.
-- `[ ]` Controle de luzes, tomadas, sensores, persianas, fechaduras, câmeras e climatização.
-- `[ ]` Tailscale para controle remoto sem abrir portas na internet.
+1. Ler `CLAUDE.md`, `AGENTS.md`, `docs/ROADMAP.md` e este arquivo antes de editar.
+2. Reutilizar configuracao, ferramentas, eventos SSE, mesh e API local existentes.
+3. Criar ou migrar tabelas sem apagar dados antigos.
+4. Toda acao da IA deve retornar sucesso somente depois da operacao real; falha,
+   timeout e estado desconhecido precisam chegar ao usuario.
+5. Operacoes independentes devem rodar em paralelo e poder ser canceladas por
+   voz, API ou pela rotina `parar`.
+6. Cada bloco precisa ter: configuracao, persistencia, API, ferramenta da IA,
+   estado visual, logs, testes unitarios e teste real no emulador/dispositivo.
+7. Ao concluir um bloco: atualizar este arquivo, rodar
+   `./gradlew.bat assembleDebug testDebugUnitTest`, instalar o APK, testar pelo
+   API local e registrar um commit no Git.
 
-## Desenvolvimento e presença
+## Status
 
-- `[ ]` Extensão oficial para VS Code integrada ao assistente.
-- `[ ]` Presença rica no estilo Discord: projeto, arquivo, linguagem, branch e tempo codando.
-- `[ ]` Atualização em tempo real do status enquanto a pessoa programa.
-- `[ ]` Estados de codificação: escrevendo, depurando, compilando, testes, pausado e ausente.
-- `[ ]` Boneco em cena animando que está codando em um teclado.
-- `[ ]` Boneco reagindo a build concluído, erro de compilação, teste falhando e deploy.
-- `[ ]` Configurar projeto, pessoa, cômodo e privacidade diretamente na extensão.
-- `[ ]` Desativar presença, ocultar nomes de arquivos e definir modo privado.
-- `[ ]` Presença opcional publicada no Discord com o mesmo estado do assistente.
+- `[x]` fluxo completo implementado e verificado
+- `[~]` bloco em desenvolvimento
+- `[ ]` ainda nao iniciado
 
-## TV, filmes e vídeos
+## Ordem e dependencias
 
-- `[ ]` “Ligue a TV da sala”.
-- `[ ]` “Abra a Netflix, YouTube, Plex ou Jellyfin”.
-- `[ ]` “Coloque o filme X na TV”.
-- `[ ]` “Continue de onde parei”.
-- `[ ]` “Pause”, “continue”, “avance 10 minutos” e “volte 30 segundos”.
-- `[ ]` Controle por título, ator, gênero, temporada e episódio.
-- `[ ]` Histórico de filmes e séries.
-- `[ ]` Lista de assistir depois.
-- `[ ]` Escolher automaticamente a TV mais próxima da pessoa.
-- `[ ]` Mostrar mensagens, recados e lembretes na TV.
-- `[ ]` Modo cinema: luz, volume, TV, cortina, temperatura e celular.
+1. Fundacao de dispositivos e TV
+2. Audio e Spotify
+3. Presenca de desenvolvimento e extensao VS Code
+4. Echo local, rotinas e multiroom
+5. Alarmes, timers e lembretes persistentes
+6. Casa inteligente e automacoes
+7. Inteligencia, jogos e convivencia
+8. Visao, reconhecimento e sensores
+9. Aplicativo companheiro
+10. Seguranca, diagnostico e manutencao
 
-## Spotify e áudio
+Um bloco pode usar outro que ja esteja `[x]`. Se uma tarefa revelar que outro
+bloco e indispensavel, terminar o bloco dependente antes de continuar.
 
-- `[~]` Tocar música no Spotify do usuário.
-- `[~]` Listar dispositivos Spotify Connect.
-- `[~]` Transferir reprodução para outro dispositivo por nome.
-- `[ ]` Tocar na Alexa pelo Spotify Connect.
-- `[ ]` Tocar em TVs, PCs, caixas e celulares por Spotify Connect.
-- `[ ]` Escolher dispositivo Spotify por cômodo.
-- `[ ]` Buscar música, artista, álbum, playlist e podcast.
-- `[ ]` Criar e editar fila de reprodução.
-- `[ ]` Tocar playlist, álbum ou discografia.
-- `[ ]` Retomar podcast do ponto salvo.
-- `[ ]` Pausar, continuar, avançar, voltar e escolher faixa.
-- `[ ]` Favoritar música e adicionar à playlist.
-- `[ ]` Identificar música tocando e responder sobre ela.
-- `[ ]` Tocar arquivos locais.
-- `[ ]` Tocar rádio online.
-- `[ ]` Tocar sons próprios.
-- `[ ]` Biblioteca de efeitos sonoros.
-- `[ ]` Multiroom com vários aparelhos.
-- `[ ]` Sincronização de música entre cômodos.
-- `[ ]` Equalizador e perfis de áudio.
-- `[ ]` Ducking: abaixar música quando o robô ou uma pessoa falar.
+## Bloco 1 - Fundacao de dispositivos e experiencia de TV
 
-## Echo Dot local
+Status: `[~]`
 
-- `[ ]` Wake word personalizada.
-- `[ ]` Cadastro guiado da wake word com várias repetições.
-- `[ ]` Wake word diferente por aparelho.
-- `[ ]` Resposta curta, resposta detalhada e modo silencioso.
-- `[ ]` Follow-up sem repetir a wake word.
-- `[ ]` Modo sussurro.
-- `[ ]` Modo não perturbe.
-- `[ ]` Volume noturno automático.
-- `[ ]` Anúncio em todos os aparelhos.
-- `[ ]` Anúncio em um cômodo.
-- `[ ]` Anúncio para uma pessoa.
-- `[ ]` Interfone entre dois cômodos.
-- `[ ]` Canal de voz com aceitar, recusar e encerrar.
-- `[ ]` Chamadas para contatos autorizados.
-- `[ ]` Rotinas com várias ações paralelas.
-- `[ ]` Rotinas por frase, horário, pessoa, rosto, presença, clima, som ou dispositivo.
-- `[ ]` Rotinas de chegada e saída.
-- `[ ]` Rotina de bom-dia.
-- `[ ]` Rotina de boa-noite.
-- `[ ]` Rotina de cinema.
-- `[ ]` Rotina de dormir.
-- `[ ]` Rotina de acordar.
+Este e um unico bloco. O comando `ligue a TV`, `abra um filme na TV` e `pause
+na TV` deve passar pela mesma identidade de dispositivo, pela mesma verificacao
+de estado e pela mesma selecao por comodo/pessoa.
 
-## Alarmes, timers e lembretes
+### Escopo que entra junto
 
-- `[ ]` Despertador único.
-- `[ ]` Despertador recorrente por dias da semana.
-- `[ ]` Despertador por pessoa.
-- `[ ]` Despertador por cômodo.
-- `[ ]` Despertador com som escolhido.
-- `[ ]` Despertador com música.
-- `[ ]` Despertador com playlist.
-- `[ ]` Despertador com volume gradual.
-- `[ ]` Despertador com luz gradual.
-- `[ ]` Soneca por voz.
-- `[ ]` Desligar alarme por voz.
-- `[ ]` Confirmação de que a pessoa acordou.
-- `[ ]` Escalonamento para cuidador sem confirmação.
-- `[ ]` Timer nomeado.
-- `[ ]` Vários timers ao mesmo tempo.
-- `[ ]` Pausar, retomar e adicionar tempo ao timer.
-- `[ ]` Cronômetro.
-- `[ ]` Lembrete persistente até confirmação.
-- `[ ]` Lembrete por pessoa.
-- `[ ]` Lembrete no cômodo onde a pessoa está.
-- `[ ]` Lembrete por reconhecimento facial.
-- `[ ]` Lembrete por reconhecimento de voz.
-- `[ ]` Histórico de lembretes confirmados.
+- Cadastro de PC, TV e dispositivo de rede com nome, comodo, pessoa, MAC,
+  broadcast, IP/host, tipo e portas de verificacao.
+- Descoberta de dispositivos na rede e apelidos editaveis.
+- Wake-on-LAN seguido de polling de estado; nunca dizer que ligou apenas por
+  ter enviado o pacote.
+- Android TV por ADB: parear, conectar, listar apps, abrir app, Home, Back,
+  volume, mute, ligar, desligar, pause, play, proxima, anterior e seek.
+- TV, filmes e videos: Netflix, YouTube, Plex e Jellyfin; busca por titulo,
+  ator, genero, temporada e episodio; continuar de onde parou; historico e
+  lista assistir depois.
+- Transportes de reproducao: ADB/MediaSession quando for Android TV,
+  Google Cast quando o destino anunciar Cast e Spotify Connect para audio.
+- Escolha automatica da TV mais proxima da pessoa, com confirmacao quando
+  houver mais de uma TV elegivel.
+- Notificacoes, recados e lembretes na TV.
+- Modo cinema como rotina composta: TV, volume, luz, cortina, temperatura e
+  celular, executando acoes independentes em paralelo.
 
-## Casa inteligente e automações
+### Implementacao esperada
 
-- `[ ]` Cenas de iluminação, temperatura e segurança.
-- `[ ]` Cenas de presença e ausência.
-- `[ ]` Cenas para chuva, frio, calor e tempestade.
-- `[ ]` Aviso de porta ou janela aberta.
-- `[ ]` Aviso de vazamento ou fumaça.
-- `[ ]` Aviso de energia ou internet caída.
-- `[ ]` Aviso de bateria baixa.
-- `[ ]` Monitorar computador, impressora, roteador e servidor.
-- `[ ]` Reiniciar dispositivo por comando autorizado.
-- `[ ]` Executar scripts autorizados no PC.
-- `[ ]` Abrir programas no PC.
-- `[ ]` Controlar volume e mídia no PC.
-- `[ ]` Enviar notificações para PC, celular e TV.
+- `LanDeviceConfig` e `TvDeviceConfig` devem ser evolutiveis e migradas sem
+  apagar configuracoes existentes.
+- Criar um `DeviceRepository` para descoberta, pareamento, health check,
+  ultimo estado e comodo; nao espalhar sockets e comandos ADB nas tools.
+- Criar ferramentas separadas e composaveis: `device_discover`,
+  `device_status`, `wake_lan`, `tv_pair_adb`, `tv_control`, `tv_open_app`,
+  `tv_search`, `tv_play` e `tv_queue`.
+- Expor API local para listar dispositivos, parear, testar, controlar e
+  consultar estado. Emitir eventos SSE de `device_state`, `device_action` e
+  `device_error`.
+- O fluxo de uma acao deve ser: selecionar destino -> acordar se necessario
+  -> aguardar estado online -> conectar protocolo -> executar -> confirmar
+  estado final. Cada etapa deve ter timeout e cancelamento.
+- Registrar apenas dados tecnicos necessarios; credenciais de pareamento ficam
+  no armazenamento privado e nunca entram no Git ou no mesh sem protecao.
 
-## Inteligência e convivência
+### Face e animacoes
 
-- `[ ]` Resumo da manhã e da noite.
-- `[ ]` Resumo de agenda, clima, tarefas e lembretes.
-- `[ ]` Perguntas de acompanhamento.
-- `[ ]` Memória, personalidade e preferências por pessoa.
-- `[ ]` Preferências de música por pessoa.
-- `[ ]` Preferências de cômodo.
-- `[ ]` Piadas contextuais.
-- `[ ]` Jogos e quizzes por voz.
-- `[ ]` Pontuação por pessoa.
-- `[ ]` Modo criança.
-- `[ ]` Modo visitante.
-- `[ ]` Modo cuidador.
-- `[ ]` Permissões por pessoa.
-- `[ ]` Confirmação para ações importantes.
-- `[ ]` Histórico de ações.
-- `[ ]` Explicação do que fez.
-- `[ ]` Explicação do que falhou.
-- `[ ]` Nunca confirmar tarefa não executada.
+- Enquanto procura a TV: olhar ao redor e mostrar um estado de busca.
+- Enquanto acorda/conecta: cena curta de mexer em um controle remoto.
+- Enquanto busca filme: olhos curiosos e bolha de progresso sem cortar texto.
+- Enquanto reproduz: cena assistindo, com controle remoto e reacoes ocasionais.
+- Em erro: explicar o passo que falhou e oferecer nova tentativa, sem afirmar
+  que a TV foi controlada.
 
-## Visão, som e sensores
+### Aceite do bloco
 
-- `[ ]` Reconhecimento facial contínuo.
-- `[ ]` Rastreamento da pessoa fixada.
-- `[ ]` Reconhecimento de voz por pessoa.
-- `[ ]` Detecção de movimento, gestos, aceno e palmas.
-- `[ ]` Detecção de campainha.
-- `[ ]` Detecção de bebê chorando.
-- `[ ]` Detecção de cachorro e gato.
-- `[ ]` Detecção de tosse e espirro.
-- `[ ]` Detecção de alarme.
-- `[ ]` Detecção de vidro quebrando.
-- `[ ]` Leitura de texto pela câmera.
-- `[ ]` Descrição do ambiente.
-- `[ ]` Leitura de códigos QR.
-- `[ ]` Detecção de objetos perdidos.
-- `[ ]` Modo escuro com iluminação simulada.
+- Uma TV pode ser cadastrada, descoberta, acordada, verificada e controlada
+  pelo mesmo nome e comodo.
+- O teste cobre TV desligada, TV iniciando, TV online e TV indisponivel.
+- `ligue a TV`, `abra o YouTube`, `procure o filme`, `continue`, `pause`,
+  `avance`, `volte` e `desligue` funcionam pelo fluxo de voz e pela API.
+- Duas TVs visiveis nao causam comando no destino errado.
+- O APK inicia no emulador, os testes passam e existe evidencia de teste em
+  pelo menos um dispositivo Android TV real ou em um alvo ADB controlavel.
 
-## Aplicativo companheiro
+## Bloco 2 - Audio e Spotify
 
-- `[ ]` Chat.
-- `[ ]` Listas de compras.
-- `[ ]` Tarefas.
-- `[ ]` Agenda.
-- `[ ]` Recados.
-- `[ ]` Lembretes.
-- `[ ]` Controle de música, TV e dispositivos.
-- `[ ]` Histórico de conversas e ações.
-- `[ ]` Pareamento por QR.
-- `[ ]` Token individual por celular.
-- `[ ]` Revogar celular.
-- `[ ]` Permissões por celular.
-- `[ ]` Controle remoto via Tailscale.
-- `[ ]` Notificações push.
-- `[ ]` Chamadas entre aparelhos.
+Status: `[~]`
 
-## Segurança e manutenção
+Entram juntos: login por usuario, busca de faixa/artista/album/playlist/
+podcast, selecao de dispositivo, play/pause/seek, fila, favoritos, retomada,
+Spotify Connect na TV/PC/caixa/Alexa, multiroom e ducking. O assistente deve
+  consultar dispositivos antes de dizer onde a musica esta tocando.
 
-- `[ ]` Backup e restauração de configurações.
-- `[ ]` Exportação sem segredos.
-- `[ ]` Atualização automática.
-- `[ ]` Logs pesquisáveis.
-- `[ ]` Diagnóstico de microfone, câmera, rede e Bluetooth.
-- `[ ]` Teste de cada integração.
-- `[ ]` Tela de dispositivos online.
-- `[ ]` Tela de ferramentas disponíveis.
-- `[ ]` Tela de permissões.
-- `[ ]` Tela de tarefas em andamento.
-- `[ ]` Cancelar qualquer tarefa em andamento por voz.
+Arquivos principais: `SpotifyTools.kt`, configuracao Spotify, API local,
+`EventDispatcher` e cenas `DANCE`. Testar 20 comandos consecutivos sem perder
+o dispositivo ou confundir resposta de busca com reproducao.
+
+## Bloco 3 - Presenca de desenvolvimento e extensao VS Code
+
+Status: `[ ]`
+
+- Extensao oficial em `integrations/vscode`.
+- Presenca rica no estilo Discord: projeto, arquivo, linguagem, branch e
+  tempo de atividade, com modo privado para ocultar nomes.
+- Estados: escrevendo, depurando, compilando, testes, erro, pausado e ausente.
+- Canal autenticado com o API local e atualizacao em tempo real por SSE/WebSocket.
+- Cena `CODING`: o boneco sentado digitando em um teclado; reacoes diferentes
+  para build ok, erro de compilacao, teste falhando e deploy.
+- Configurar pessoa, projeto, comodo, privacidade e publicacao opcional no
+  Discord. A extensao nao deve enviar codigo-fonte.
+
+Aceite: abrir VS Code muda o status em segundos, trocar arquivo atualiza o
+status, fechar/ficar ausente encerra a presenca e a cena do teclado aparece no
+assistente sem travar conversa, musica ou reconhecimento.
+
+## Bloco 4 - Echo local, rotinas e multiroom
+
+Status: `[ ]`
+
+Wake word livre por aparelho, cadastro guiado, follow-up, sussurro, nao
+perturbe, volume noturno, anuncios por aparelho/comodo/pessoa, interfone,
+canal de voz, chamadas autorizadas e rotinas com acoes paralelas. Incluir
+bom-dia, boa-noite, cinema, dormir e acordar como rotinas reais, nao como texto.
+
+## Bloco 5 - Alarmes, timers e lembretes
+
+Status: `[ ]`
+
+Despertadores unicos/recorrentes por pessoa e comodo, sons escolhidos,
+musica/playlist, volume e luz graduais, soneca, confirmacao de acordar,
+escalonamento para cuidador, timers nomeados simultaneos, pausa/retomada,
+lembretes persistentes por rosto/voz/comodo e historico de confirmacao.
+
+## Bloco 6 - Casa inteligente e automacoes
+
+Status: `[ ]`
+
+Home Assistant, luzes, tomadas, sensores, persianas, fechaduras, cameras,
+climatizacao, cenas de presenca, chuva, frio, calor e seguranca, monitoramento
+de PC/roteador/servidor, scripts autorizados e notificacoes em PC/celular/TV.
+Incluir Tailscale para acesso remoto e descoberta de dispositivos.
+
+## Bloco 7 - Inteligencia, jogos e convivencia
+
+Status: `[ ]`
+
+Resumos da manha/noite, perguntas de acompanhamento, memoria e preferencias
+por pessoa/comodo, piadas contextuais, quizzes, jogos, placar, modo crianca,
+visitante/cuidador, permissoes, historico, explicacao de falhas e regra global
+de nunca confirmar tarefa nao executada.
+
+## Bloco 8 - Visao, reconhecimento e sensores
+
+Status: `[ ]`
+
+Reconhecimento facial continuo e rastreamento da pessoa fixada, voz por pessoa,
+gestos, aceno, palmas, campainha, choro, animais, tosse, alarmes, vidro,
+OCR, descricao do ambiente, QR, objetos perdidos e iluminacao simulada. Toda
+resposta sobre identidade deve consultar a leitura atual da camera.
+
+## Bloco 9 - Aplicativo companheiro
+
+Status: `[ ]`
+
+Chat, compras, tarefas, agenda, recados, lembretes, controle de musica/TV,
+historico, QR, token individual por celular, revogacao, permissoes, Tailscale,
+push e chamadas entre aparelhos.
+
+## Bloco 10 - Seguranca, diagnostico e manutencao
+
+Status: `[ ]`
+
+Backup/restauracao, exportacao sem segredos, atualizacao automatica, logs
+pesquisaveis, diagnostico de microfone/camera/rede/Bluetooth, teste de cada
+integracao, telas de dispositivos online, ferramentas disponiveis, permissoes,
+tarefas em andamento e cancelamento universal por voz.
+
+## Registro de cada entrega
+
+Ao trabalhar em um bloco, adicionar ao final da secao:
+
+- data e commit;
+- arquivos e migrations criados;
+- endpoints e ferramentas adicionados;
+- testes automatizados e teste real executado;
+- problemas conhecidos que impedem `[x]`.
