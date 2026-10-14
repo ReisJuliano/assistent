@@ -35,6 +35,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -130,7 +137,7 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
                             SettingsTab.entries.forEach { t ->
                                 androidx.compose.material3.NavigationRailItem(
                                     selected = tab == t, onClick = { tab = t },
-                                    icon = { Text(t.emoji, fontSize = 22.sp) }, label = { Text(t.label) },
+                                    icon = { Icon(t.icon, contentDescription = null) }, label = { Text(t.label) },
                                 )
                             }
                         }
@@ -145,7 +152,8 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
                         SettingsTab.entries.forEach { t ->
                             androidx.compose.material3.Tab(
                                 selected = tab == t, onClick = { tab = t },
-                                text = { Text("${t.emoji}  ${t.label}") },
+                                icon = { Icon(t.icon, contentDescription = null) },
+                                text = { Text(t.label) },
                             )
                         }
                     }
@@ -160,9 +168,14 @@ fun SettingsScreen(graph: AppGraph, onClose: () -> Unit) {
 }
 
 /** Settings grouped by what people look for, instead of one endless list. */
-enum class SettingsTab(val emoji: String, val label: String) {
-    FACE("😀", "Rosto"), BRAIN("🧠", "Cérebro"), VOICE("🔊", "Voz"), LIFE("🌱", "Vida"),
-    PEOPLE("👥", "Pessoas"), HOME("🏠", "Casa"), SYSTEM("⚙️", "Sistema"),
+enum class SettingsTab(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
+    FACE(Icons.Outlined.Face, "Rosto"),
+    BRAIN(Icons.Outlined.Psychology, "Cérebro"),
+    VOICE(Icons.Outlined.RecordVoiceOver, "Voz"),
+    LIFE(Icons.Outlined.Spa, "Vida"),
+    PEOPLE(Icons.Outlined.Groups, "Pessoas"),
+    HOME(Icons.Outlined.Home, "Casa"),
+    SYSTEM(Icons.Outlined.Settings, "Sistema"),
 }
 
 /** Cross-fades between tabs; each tab gets its own list (and scroll position starts at the top). */
