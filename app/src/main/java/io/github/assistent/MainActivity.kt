@@ -84,6 +84,15 @@ class MainActivity : ComponentActivity() {
         requestMissingPermissions()
     }
 
+    /** Self-update needs two special permissions that Android only grants from its settings screens. */
+    private var updatePermsMissing by mutableStateOf(false)
+
+    override fun onResume() {
+        super.onResume()
+        val u = graph.updater
+        updatePermsMissing = graph.config.current.update.let { it.enabled && it.url.isNotBlank() } && (!u.canInstall() || !u.canRelaunch())
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
@@ -98,6 +107,29 @@ class MainActivity : ComponentActivity() {
         var showSettings by remember { mutableStateOf(false) }
 
         BackHandler(enabled = showSettings) { showSettings = false }
+        var updatePromptDismissed by remember { mutableStateOf(false) }
+        if (updatePermsMissing && !updatePromptDismissed && !showSettings) {
+            val u = graph.updater
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { updatePromptDismissed = true },
+                title = { Text("Atualização automática") },
+                text = {
+                    Text(
+                        "Para eu me atualizar sozinho (sem reinstalar o APK), libere nas próximas telas:\n\n" +
+                            (if (!u.canInstall()) "• Instalar apps desconhecidos\n" else "") +
+                            (if (!u.canRelaunch()) "• Sobrepor a outros apps (para eu reabrir depois de atualizar)\n" else ""),
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        startActivity(if (!u.canInstall()) u.installPermissionIntent() else u.overlayPermissionIntent())
+                    }) { Text("Permitir") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { updatePromptDismissed = true }) { Text("Agora não") }
+                },
+            )
+        }
         LaunchedEffect(showSettings) { if (!showSettings) hideSystemBars() }
 
         Box(Modifier.fillMaxSize().background(Color.Black)) {
