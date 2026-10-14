@@ -7,11 +7,33 @@ import io.github.assistent.core.AppJson
 import io.github.assistent.core.Emotion
 import io.github.assistent.core.PresenceTracker
 import io.github.assistent.quiz.QuizRepository
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.text.Normalizer
 import kotlin.random.Random
+
+/**
+ * What the game screen shows. [options] for quiz/true-false; [reveal] = right option after an answer, [picked] = the
+ * player's; [you]/[me] = rock-paper-scissors moves (0 rock, 1 paper, 2 scissors); [countdown] while counting.
+ */
+@kotlinx.serialization.Serializable
+data class GameView(
+    val title: String,
+    val progress: String = "",
+    val question: String = "",
+    val options: List<String> = emptyList(),
+    val reveal: Int? = null,
+    val picked: Int? = null,
+    val score: String = "",
+    val hint: String = "",
+    val you: Int? = null,
+    val me: Int? = null,
+    val countdown: String = "",
+    val result: String = "",
+    val finished: Boolean = false,
+)
 
 /** What the robot does on its turn: say [say] (also shown in the bubble with [show]), with a face. */
 data class GameTurn(val say: String, val emotion: Emotion = Emotion.HAPPY, val show: String = "", val done: Boolean = false)
@@ -34,13 +56,16 @@ class GameMaster(
     private class Quiz(val topic: String, val questions: List<Q>, var i: Int = 0, var right: Int = 0, val trueFalse: Boolean = false) : Session {
         override val name = if (trueFalse) "verdade ou mentira" else "quiz"
     }
-    private class Guess(val secret: Int, var tries: Int = 0) : Session { override val name = "adivinhe o número" }
+    private class Guess(val secret: Int, var tries: Int = 0, var low: Int = 1, var high: Int = 100) : Session { override val name = "adivinhe o número" }
     private class Rps(var round: Int = 0, var me: Int = 0, var you: Int = 0) : Session { override val name = "pedra, papel e tesoura" }
 
     data class Q(val question: String, val options: List<String>, val answer: Int, val explanation: String)
 
     @Volatile var session: Session? = null
         private set
+    private val _view = kotlinx.coroutines.flow.MutableStateFlow<GameView?>(null)
+    /** The game on screen (null = no game). Stays a few seconds after the end with the final result. */
+    val view: kotlinx.coroutines.flow.StateFlow<GameView?> = _view
     /** Set by `start_game`; the runtime starts the game right after the current reply. */
     @Volatile var pending: Pair<String, String>? = null
 
@@ -55,11 +80,13 @@ class GameMaster(
         return when (normalize(game)) {
             "numero", "adivinhe o numero", "adivinha", "guess" -> {
                 val max = if (kids) 20 else 100
-                session = Guess(Random.nextInt(1, max + 1))
+                session = Guess(Random.nextInt(1, max + 1), high = max)
+                _view.value = GameView("Adivinhe o número", "Tentativa 0", "Pensei num número", hint = "entre 1 e $max")
                 GameTurn("Pensei num número de 1 a $max. Tenta adivinhar!", Emotion.HAPPY, "1 a $max")
             }
             "pedra papel e tesoura", "pedra papel tesoura", "jokenpo", "rps" -> {
                 session = Rps()
+                _view.value = GameView("Pedra, papel e tesoura", "Melhor de três", "Mostre a mão para a câmera", score = "Você 0 x 0 eu")
                 GameTurn("Melhor de três! Mostra a mão pra câmera ou fala pedra, papel ou tesoura quando eu disser já.", Emotion.HAPPY) .copy(show = "Pedra, papel ou tesoura")
             }
             "verdade ou mentira", "verdade", "true false" -> startQuiz(topic, trueFalse = true)
@@ -75,12 +102,20 @@ class GameMaster(
             return GameTurn("Não consegui preparar as perguntas agora. Quer jogar adivinhe o número?", Emotion.SAD, done = true)
         }
         session = Quiz(t, qs, trueFalse = trueFalse)
+        showQuestion(session as Quiz)
         return GameTurn((if (trueFalse) "Verdade ou mentira sobre $t! " else "Quiz de $t, ${qs.size} perguntas! ") + ask(session as Quiz).say, Emotion.HAPPY, ask(session as Quiz).show)
     }
 
     /** The robot's line before listening (rock-paper-scissors needs a countdown). */
     suspend fun prompt(say: suspend (String) -> Unit): Unit = when (val s = session) {
         is Rps -> {
+            // The countdown on screen follows the voice.
+            uiScope.launch {
+                for (w in listOf("Pedra...", "Papel...", "Tesoura...", "Já!")) {
+                    _view.value = _view.value?.copy(countdown = w, you = null, me = null, result = "")
+                    kotlinx.coroutines.delay(420)
+                }
+            }
             say("Pedra, papel, tesoura... já!")
         }
         else -> Unit
@@ -104,9 +139,14 @@ class GameMaster(
     private fun guess(s: Guess, n: String): GameTurn {
         val v = numberIn(n) ?: return GameTurn("Fala um número!", Emotion.CONFUSED)
         s.tries++
+        if (v < s.secret) s.low = maxOf(s.low, v + 1) else if (v > s.secret) s.high = minOf(s.high, v - 1)
+        _view.value = _view.value?.copy(
+            progress = "Tentativa ${s.tries}", question = if (v == s.secret) "Era ${s.secret}!" else "Você disse $v: é ${if (v < s.secret) "maior" else "menor"}",
+            hint = "entre ${s.low} e ${s.high}", result = if (v == s.secret) "Acertou em ${s.tries}" else "",
+        )
         return when {
-            v < s.secret -> GameTurn("É maior que $v.", Emotion.THINKING, "> $v")
-            v > s.secret -> GameTurn("É menor que $v.", Emotion.THINKING, "< $v")
+            v < s.secret -> GameTurn("É maior que $v.", Emotion.THINKING)
+            v > s.secret -> GameTurn("É menor que $v.", Emotion.THINKING)
             else -> end("Acertou! Era ${s.secret}, em ${s.tries} tentativas.", Emotion.JOY)
         }
     }
@@ -118,13 +158,15 @@ class GameMaster(
         )
         val ok = picked == q.answer
         if (ok) s.right++
+        _view.value = _view.value?.copy(picked = picked, reveal = q.answer, score = "Acertos ${s.right} de ${s.i + 1}", result = if (ok) "Acertou!" else "Errou")
         runCatching { scores.record(presence.currentPerson.value?.id, s.topic, ok) }
         val feedback = (if (ok) listOf("Acertou!", "Isso aí!", "Mandou bem!").random() else "Não... era ${answerText(q, s.trueFalse)}.") +
             (q.explanation.takeIf { it.isNotBlank() }?.let { " $it" } ?: "")
         s.i++
         if (s.i >= s.questions.size) return end("$feedback Fim! Você acertou ${s.right} de ${s.questions.size}.", if (s.right * 2 >= s.questions.size) Emotion.JOY else Emotion.HAPPY)
         val next = ask(s)
-        return GameTurn("$feedback Próxima: ${next.say}", if (ok) Emotion.JOY else Emotion.SAD, next.show)
+        nextQuestionLater(s)
+        return GameTurn("$feedback Próxima: ${next.say}", if (ok) Emotion.JOY else Emotion.SAD)
     }
 
     private suspend fun rps(s: Rps, n: String): GameTurn {
@@ -142,6 +184,10 @@ class GameMaster(
         val result = when ((you - me + 3) % 3) { 0 -> 0; 1 -> 1; else -> -1 }
         if (result == 1) s.you++ else if (result == -1) s.me++
         val line = "Eu: ${names[me]}. Você: ${names[you]}. " + when (result) { 0 -> "Empate!"; 1 -> "Você ganhou essa!"; else -> "Ganhei!" }
+        _view.value = _view.value?.copy(
+            you = you, me = me, countdown = "", progress = "Rodada ${s.round}", score = "Você ${s.you} x ${s.me} eu",
+            result = when (result) { 0 -> "Empate"; 1 -> "Você ganhou"; else -> "Eu ganhei" }, question = "",
+        )
         if (s.you == 2 || s.me == 2 || s.round >= 5) {
             return end("$line ${if (s.you > s.me) "Você venceu a melhor de três!" else if (s.me > s.you) "Venci a melhor de três!" else "Deu empate geral!"}",
                 if (s.you > s.me) Emotion.SAD else Emotion.JOY)
@@ -152,7 +198,33 @@ class GameMaster(
 
     private fun end(line: String, emotion: Emotion = Emotion.HAPPY): GameTurn {
         session = null
+        _view.value = _view.value?.copy(finished = true, result = _view.value?.result?.ifBlank { "Fim de jogo" } ?: "Fim de jogo")
+        val shown = _view.value
+        hideLater(shown)
         return GameTurn(line, emotion, done = true)
+    }
+
+    private val uiScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
+    private fun showQuestion(s: Quiz) {
+        val q = s.questions[s.i]
+        _view.value = GameView(
+            title = if (s.trueFalse) "Verdade ou mentira: ${s.topic}" else "Quiz: ${s.topic}",
+            progress = "Pergunta ${s.i + 1}/${s.questions.size}", question = q.question,
+            options = if (s.trueFalse) listOf("Verdade", "Mentira") else q.options, score = "Acertos ${s.right}",
+        )
+    }
+
+    /** Keep the answer (right/wrong colours) on screen for a moment, then show the next question. */
+    private fun nextQuestionLater(s: Quiz) = uiScope.launch {
+        kotlinx.coroutines.delay(2_200)
+        if (session === s) showQuestion(s)
+    }
+
+    /** The final screen stays a few seconds, then the game panel goes away. */
+    private fun hideLater(shown: GameView?) = uiScope.launch {
+        kotlinx.coroutines.delay(6_000)
+        if (session == null && _view.value === shown) _view.value = null
     }
 
     private fun ask(s: Quiz): GameTurn {

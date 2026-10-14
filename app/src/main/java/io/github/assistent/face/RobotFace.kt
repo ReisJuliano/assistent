@@ -69,6 +69,9 @@ fun RobotFace(
     waving: Boolean = false,
     /** When the runtime asked the current light gag to switch off (0 = staying on). */
     lightOffAt: Long = 0L,
+    /** Slides the face by a fraction of the screen (e.g. -0.22 to the left when a game panel is on the right). */
+    shiftX: Float = 0f,
+    shiftY: Float = 0f,
 ) {
     val animator = remember { FaceAnimator() }
     val baseColor = remember(face.color) { parseHexColor(face.color) }
@@ -78,6 +81,7 @@ fun RobotFace(
     val mimicState = rememberUpdatedState(mimic)
     val wavingState = rememberUpdatedState(waving)
     val lightOffState = rememberUpdatedState(lightOffAt)
+    val shiftState = rememberUpdatedState(shiftX to shiftY)
     val sceneState = rememberUpdatedState(Scene.of(scene) to sceneStartedAt)
     val keyState = rememberUpdatedState(activity to emotion)
     val gazeState = rememberUpdatedState(gaze)
@@ -123,6 +127,8 @@ fun RobotFace(
                 LightGag.offT = if (offAt >= startedAt && offAt > 0L) (offAt - startedAt) / 1000f else Float.MAX_VALUE
                 val frame = if (applies && sc != null && sceneT in 0f..sc.seconds) Life.frame(sc, sceneT, startedAt, color, base) else null
                 animator.lit = if (frame != null && sc != null) LightGag.level(sc, sceneT) else 0f
+                animator.shiftX = shiftState.value.first
+                animator.shiftY = shiftState.value.second
                 // Mirror the user: copy head tilt and winks while idle.
                 val user = gazeState.value
                 // Camera tracking follows the eyes continuously, but head tilt is an occasional mimic beat.
@@ -275,6 +281,8 @@ internal class FaceAnimator {
     var arms = ArmPose()
     /** 0..1 white "light" level of the current light gag (not a spring: the gag script eases it). */
     var lit = 0f
+    var shiftX = 0f
+    var shiftY = 0f
     val lhx = Spring(-SHOULDER.x); val lhy = Spring(SHOULDER.y); val lha = Spring()
     val rhx = Spring(SHOULDER.x); val rhy = Spring(SHOULDER.y); val rha = Spring()
 
@@ -433,8 +441,8 @@ private fun DrawScope.drawFace(a: FaceAnimator, cfg: FaceConfig, activity: Activ
     val bounceY = -abs(sin(t * 2f * PI.toFloat() * 1.6f)) * unit * 0.03f * p.bounce
     val trembleX = sin(t * 41f) * sin(t * 23f) * unit * 0.004f * p.tremble
     val shakeX = a.shake * unit * 0.03f
-    val cx = w / 2f + trembleX + shakeX + a.sceneDx.x * unit
-    val cy = h / 2f + cfg.offsetY.coerceIn(-0.3f, 0.3f) * h + breath * unit * 0.005f + bounceY + a.sceneDy.x * unit
+    val cx = w / 2f + a.shiftX * w + trembleX + shakeX + a.sceneDx.x * unit
+    val cy = h / 2f + (cfg.offsetY.coerceIn(-0.3f, 0.3f) + a.shiftY) * h + breath * unit * 0.005f + bounceY + a.sceneDy.x * unit
 
     val ew = unit * 0.16f * cfg.eyeSize.coerceIn(0.4f, 2f)
     val eh = ew * cfg.eyeAspect.coerceIn(0.4f, 2.5f)

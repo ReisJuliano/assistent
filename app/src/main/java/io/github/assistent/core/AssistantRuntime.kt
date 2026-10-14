@@ -552,7 +552,8 @@ class AssistantRuntime(
     }
 
     private suspend fun speakTurn(t: io.github.assistent.games.GameTurn) {
-        if (t.show.isNotBlank()) showBubble(t.show, speak = false, emotion = t.emotion)
+        // The game panel already shows the question/options; the bubble is only for games without it.
+        if (t.show.isNotBlank() && games?.view?.value == null) showBubble(t.show, speak = false, emotion = t.emotion)
         else setEmotion(t.emotion, 3_000)
         say(t.say, t.emotion)
     }

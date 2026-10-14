@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -147,6 +148,12 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(showSettings) { if (!showSettings) hideSystemBars() }
 
+        // A game on screen: the panel sits beside the face (right in landscape, below in portrait) and the face slides away.
+        val game by graph.games.view.collectAsState()
+        val landscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val shiftX by androidx.compose.animation.core.animateFloatAsState(if (game != null && landscape) -0.22f else 0f, label = "faceX")
+        val shiftY by androidx.compose.animation.core.animateFloatAsState(if (game != null && !landscape) -0.25f else 0f, label = "faceY")
+        val faceShift = shiftX to shiftY
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             RobotFace(
                 activity = state.activity,
@@ -157,6 +164,8 @@ class MainActivity : ComponentActivity() {
                 scene = state.scene,
                 sceneStartedAt = state.sceneStartedAt,
                 lightOffAt = state.lightOffAt,
+                shiftX = faceShift.first,
+                shiftY = faceShift.second,
                 ambient = if (config.life.weatherEffects && (state.weatherActive || config.life.weatherAlways)) state.ambient else Ambient(),
                 mimic = config.life.enabled && config.life.mimic,
                 // Speech bubbles are not waves. The actual WAVE_BACK scene owns the arm gesture.
@@ -191,6 +200,11 @@ class MainActivity : ComponentActivity() {
                         onLongPress = { showSettings = true },
                     )
                 },
+            )
+            io.github.assistent.ui.GameOverlay(
+                game, io.github.assistent.face.parseHexColor(config.face.color),
+                if (landscape) Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.46f).padding(end = 24.dp)
+                else Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
             )
             val ops by graph.operations.list.collectAsState()
             io.github.assistent.ui.OperationsHud(
