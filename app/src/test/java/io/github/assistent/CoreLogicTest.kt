@@ -7,6 +7,7 @@ import io.github.assistent.voice.WakeWordEngine
 import io.github.assistent.tools.WakeOnLan
 import io.github.assistent.tools.TvAdbWire
 import io.github.assistent.tools.TvAdbClient
+import io.github.assistent.brain.CapabilityPlanner
 import java.net.ServerSocket
 import java.util.concurrent.Executors
 import kotlinx.serialization.json.Json
@@ -80,6 +81,13 @@ class CoreLogicTest {
             future.get()
             executor.shutdownNow()
         }
+    }
+
+    @Test fun capabilityPlanningIsGeneralAndRequiresConfirmedResults() {
+        val prompt = CapabilityPlanner.instructions()
+        org.junit.Assert.assertTrue(prompt.contains("not only televisions"))
+        org.junit.Assert.assertTrue(prompt.contains("confirmed by its tool result"))
+        org.junit.Assert.assertTrue(prompt.contains("Independent steps may run in parallel"))
     }
 
     @Test fun emotionTagIsParsedAndStripped() {

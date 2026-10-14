@@ -189,6 +189,8 @@ class Brain(
             )
             appendLine("Start EVERY reply with exactly one emotion tag for your face: ${Emotion.entries.joinToString(" ") { "[${it.tag}]" }}. Example: [happy] Claro, já anotei!")
             appendLine("Use tools whenever you need current information (web_search, get_weather), to remember or recall facts about the user, to create reminders/alarms, or to control devices and webhooks. Never invent facts you could look up.")
+            appendLine(CapabilityPlanner.instructions())
+            appendLine(CapabilityPlanner.catalog(tools.all()))
             appendLine("For 'register this face', use register_face with the visible face. If its name is missing, ask for the name. After a successful registration, ask whether the user wants to add an observation such as wife, friend, or coworker; save the answer with set_person_observation. Do not claim registration or observation succeeded unless the tool result confirms it.")
             appendLine("If the user says goodbye or tells you to rest/sleep, call go_to_sleep.")
             interruptedReply?.let {
