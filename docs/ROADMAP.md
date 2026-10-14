@@ -36,6 +36,9 @@ Aceite: perguntar "do que eu gosto?" retorna memórias da pessoa reconhecida, n�
 
 ## 1. Respostas em streaming + fala por frase ⭐
 
+> **Atualizado:** o plano detalhado e atual (estado do código, problemas encontrados, desenho e critérios de aceite)
+> está em [STREAMING_E_INTERRUPCAO.md](STREAMING_E_INTERRUPCAO.md). Ele substitui o texto abaixo.
+
 Objetivo: começar a falar em ~1–2 s em vez de 5–10 s.
 
 - `LlmClient.stream(cfg, messages, tools): Flow<StreamEvent>` usando `"stream": true` (SSE `data: {...}`), juntando
@@ -53,6 +56,9 @@ Objetivo: começar a falar em ~1–2 s em vez de 5–10 s.
 Aceite: medir no log o tempo até o primeiro áudio < 2,5 s com `gpt-6.1-sol`; resposta longa sem pausas estranhas.
 
 ## 2. Interromper falando (barge-in) sem perder contexto
+
+> **Atualizado:** o plano detalhado e atual (estado do código, problemas encontrados, desenho e critérios de aceite)
+> está em [STREAMING_E_INTERRUPCAO.md](STREAMING_E_INTERRUPCAO.md). Ele substitui o texto abaixo.
 
 - Durante `SPEAKING`, manter um detector de voz leve: reaproveitar o loop de áudio do `WakeWordEngine` (ou um
   `AudioRecord` próprio com VAD de energia) **com eco cancelado**: usar `MediaRecorder.AudioSource.VOICE_COMMUNICATION`
