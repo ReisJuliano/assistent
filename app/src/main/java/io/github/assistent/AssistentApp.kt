@@ -56,7 +56,6 @@ import io.github.assistent.tools.RecallTool
 import io.github.assistent.tools.RememberTool
 import io.github.assistent.tools.StartTimerTool
 import io.github.assistent.tools.SpotifyPlayTool
-import io.github.assistent.tools.SpotifySimpleTool
 import io.github.assistent.tools.SpotifyDevicesTool
 import io.github.assistent.tools.SpotifyTransferTool
 import io.github.assistent.tools.SleepReportTool
@@ -119,6 +118,9 @@ class AppGraph(context: Context) {
     val registerFaceTool = RegisterFaceTool(people)
     val deviceTool = DeviceTool(context, config)
 
+    /** The owner's Spotify account (PKCE login, private tokens). */
+    val spotify = io.github.assistent.tools.SpotifyAuth(context, config, http, scope)
+
     val tools = ToolRegistry(
         builtins = listOf(
             WebSearchTool(http, config),
@@ -145,13 +147,10 @@ class AppGraph(context: Context) {
             ListShowTool(lists),
             ListCheckTool(lists),
             ListRemoveTool(lists),
-            SpotifyPlayTool(http, config),
-            SpotifyDevicesTool(http, config),
-            SpotifyTransferTool(http, config),
-            SpotifySimpleTool("music_pause", "Pause Spotify playback.", "PUT", "me/player/pause", http, config),
-            SpotifySimpleTool("music_next", "Skip to next Spotify track.", "POST", "me/player/next", http, config),
-            SpotifySimpleTool("music_volume", "Set Spotify playback volume.", "PUT", "me/player/volume", http, config, hasVolume = true),
-            SpotifySimpleTool("music_now_playing", "Get the current Spotify track.", "GET", "me/player/currently-playing", http, config),
+            SpotifyPlayTool(context, spotify),
+            io.github.assistent.tools.SpotifyControlTool(spotify),
+            SpotifyDevicesTool(spotify),
+            SpotifyTransferTool(spotify),
             SleepReportTool(sleep),
 
             RecordQuizScoreTool(quizzes, presence),

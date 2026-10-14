@@ -44,7 +44,9 @@ data class MemoryConfig(
 
 @Serializable
 data class SpotifyConfig(
+    /** Client ID of the owner's own app in the Spotify developer dashboard (not a secret). */
     val clientId: String = "",
+    /** Legacy: tokens used to live here (shared config!). They are cleared by migration and kept in a private file now. */
     val accessToken: String = "",
     val refreshToken: String = "",
     val deviceId: String = "",

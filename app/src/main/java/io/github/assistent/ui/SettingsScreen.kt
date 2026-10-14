@@ -624,6 +624,7 @@ private fun SettingsList(
             }
             SettingsTab.HOME -> {
                 item { DevicesSection(graph, cfg, up) }
+                item { SpotifySection(graph, cfg, up) }
                 item { LanDevicesSection(cfg, up) }
                 item { WebhooksSection(cfg, up) }
             }
@@ -1035,3 +1036,22 @@ private fun localIp(): String? = runCatching {
         .flatMap { it.inetAddresses.toList() }
         .firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
 }.getOrNull()
+
+@Composable
+private fun SpotifySection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> Unit) {
+    val status by graph.spotify.status.collectAsState()
+    val context = LocalContext.current
+    Section("Spotify") {
+        Hint("Toca suas músicas em qualquer aparelho com Spotify (celular, PC, TV, caixa). Precisa de Spotify Premium para controlar a reprodução.")
+        Hint("1) Crie um app grátis em developer.spotify.com/dashboard  2) Em Redirect URIs coloque exatamente: ${io.github.assistent.tools.SpotifyAuth.REDIRECT}  3) Marque Web API, salve e cole o Client ID aqui  4) Conectar.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { copy(context, io.github.assistent.tools.SpotifyAuth.REDIRECT) }) { Text("Copiar Redirect URI") }
+        }
+        Field("Client ID", cfg.spotify.clientId) { v -> up { it.copy(spotify = it.spotify.copy(clientId = v.trim())) } }
+        Hint(status)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = { graph.spotify.startSignIn() }) { Text(if (graph.spotify.connected) "Conectar de novo" else "Conectar Spotify") }
+            if (graph.spotify.connected) TextButton(onClick = { graph.spotify.signOut() }) { Text("Desconectar") }
+        }
+    }
+}

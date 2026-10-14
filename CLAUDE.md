@@ -302,6 +302,18 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
 - The brain only overrides a reply with "não consegui concluir" when an *action* tool's last attempt failed;
   read-only tools (search, read page, weather…) failing is normal and doesn't discard a good answer.
 
+### Spotify (`tools/SpotifyTools.kt`)
+
+- Each owner creates a free app at developer.spotify.com, registers `http://127.0.0.1:4381/callback` as redirect URI and
+  pastes the Client ID (Settings → Casa → Spotify). Login = Authorization Code + PKCE in the browser, loopback listener
+  on port 4381 only while signing in. Tokens in `filesDir/spotify-auth.json` (refreshed automatically), never in
+  config.json (config v8 clears the old shared tokens).
+- `music_play`: active device → plays there; one device → there; several and none active → returns `ASK_DEVICE: ...`
+  and the model asks which one ("aqui" = this phone: opens the Spotify app here and waits for it). Pt-BR device words
+  (computador, tv, caixa, celular) match device types. Results are confirmed by reading `me/player` back.
+  `music_control` (pause/resume/next/previous/volume/shuffle/repeat/seek/now_playing), `music_devices`, `music_transfer`.
+  Playback control needs Spotify Premium (403 is reported as such). Not tested with a real account yet.
+
 ### Games (`games/GameMaster.kt`)
 
 Voice games the robot runs itself (no LLM round-trip per answer): quiz and true-or-false (questions written by the LLM

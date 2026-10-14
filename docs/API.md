@@ -186,6 +186,9 @@ Eventos: `wake`, `sleep`, `user_said`, `reply`, `reminder`, `emotion`, `face_see
 | POST | `/chatgpt/signout` | | Desconecta a conta ChatGPT deste aparelho |
 | POST | `/vision/hands` | imagem (JPEG/PNG) | Gesto da mão na imagem (MediaPipe): `Thumb_Up 0.73 palm=(x,y)` |
 | POST | `/vision/detect` | imagem (JPEG/PNG) no corpo | Objetos/pessoas/bichos que ele vê: `[{"label":"cat","score":0.7,"box":"x1,y1,x2,y2"}]` |
+| GET | `/spotify` | | Conta Spotify conectada? Redirect URI a cadastrar |
+| POST | `/spotify/signin` | | Abre o login oficial do Spotify no navegador do aparelho |
+| POST | `/spotify/signout` | | Desconecta a conta |
 | POST | `/games/start` | `{"game":"quiz|numero|pedra_papel_tesoura|verdade_ou_mentira","topic":"planetas"}` | Começa um jogo por voz (com `"voice":"false"` é conduzido pela API) |
 | POST | `/games/answer` | `{"text":"letra b"}` | Resposta do jogador (modo API) |
 | GET | `/games` | | Jogo ativo e placares por pessoa |

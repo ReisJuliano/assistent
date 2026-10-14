@@ -54,7 +54,7 @@ class ConfigStore(dir: File) {
     }
 
     companion object {
-        const val CURRENT_VERSION = 7
+        const val CURRENT_VERSION = 8
 
         /** Upgrades settings saved by older versions (defaults that changed on purpose). */
         fun migrate(cfg: AppConfig): AppConfig {
@@ -90,6 +90,10 @@ class ConfigStore(dir: File) {
             if (c.version < 7 && c.tts.robotVoice == "light") {
                 // v7: "light" was barely audible as a robot; the classic preset is the default now.
                 c = c.copy(tts = c.tts.copy(robotVoice = "classic"))
+            }
+            if (c.version < 8) {
+                // v8: Spotify tokens never live in the shared config (config API, mesh); log in again from Settings.
+                c = c.copy(spotify = c.spotify.copy(accessToken = "", refreshToken = ""))
             }
             return c.copy(version = CURRENT_VERSION)
         }

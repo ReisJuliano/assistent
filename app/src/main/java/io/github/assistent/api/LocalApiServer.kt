@@ -612,6 +612,10 @@ class LocalApiServer(private val g: AppGraph) {
                         put("scores", AppJson.encodeToJsonElement(g.quizzes.all()))
                     })
                 })
+                // Spotify account: status / browser login on the device / log out.
+                get("/spotify", guard { call.respond(buildJsonObject { put("connected", g.spotify.connected); put("status", g.spotify.status.value); put("redirectUri", io.github.assistent.tools.SpotifyAuth.REDIRECT) }) })
+                post("/spotify/signin", guard { call.respond(buildJsonObject { put("status", g.spotify.startSignIn()) }) })
+                post("/spotify/signout", guard { g.spotify.signOut(); call.respond(ok()) })
                 // What the robot is doing right now (tool calls with their real state) and cancel-all ("parar").
                 get("/operations", guard { call.respond(g.operations.list.value) })
                 post("/operations/cancel", guard { call.respond(buildJsonObject { put("cancelled", g.operations.cancelAll()) }) })
