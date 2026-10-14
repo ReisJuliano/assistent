@@ -163,6 +163,16 @@ awake, not cleared by conversation):
 microphone stream can be analysed for music and loud sounds. The Portuguese small model has the old flat layout
 (`final.mdl` at the root), so the model root is detected by `final.mdl` or `am/final.mdl`.
 
+### Screen light (`face/LightGag.kt`)
+
+The screen can work as a lamp (dark room, face recognition in low light, "acende a luz"): a gag scene
+(`LIGHT_LAMP` pulls a desk-lamp chain, `LIGHT_PHONE` fumbles a phone flashlight that fails once, `LIGHT_BULB` a
+bright idea that needs sunglasses) switches on a white panel. While lit, `RobotFace` draws the face in a layer,
+re-inks it with a dark shade of the user's color (`SrcAtop`) and puts white behind it (`DstOver`); `MainActivity`
+forces full backlight. Everything is a function of scene time plus `LightGag.offT` (from `AssistantState.lightOffAt`),
+so switching off replays the gesture. Entry points: `runtime.lightOn/lightOff`, tool `screen_light`, `POST /light`.
+Other scenes cannot interrupt a light scene.
+
 ### Self-update (`update/Updater.kt`)
 
 - `./gradlew publishUpdate` builds and copies the APK to `updates/` (git-ignored) with `latest.json` (versionCode, SHA-256).

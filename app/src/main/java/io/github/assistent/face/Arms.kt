@@ -37,12 +37,7 @@ object Arms {
                 else ArmPose(Offset(-0.44f, 0.2f + up * 0.04f), Offset(0.46f, -0.2f - up * 0.12f))
             }
             Scene.HEARD -> return ArmPose(Offset(-0.28f, 0.02f), Offset(0.28f, 0.02f))
-            Scene.LIGHT_ASSIST -> {
-                val reach = ((t - 0.15f) / 1.35f).coerceIn(0f, 1f)
-                val x = 0.16f + (0.64f - 0.16f) * reach
-                val y = 0.34f + (-0.24f - 0.34f) * reach
-                return ArmPose(null, Offset(x, y))
-            }
+            Scene.LIGHT_LAMP, Scene.LIGHT_PHONE, Scene.LIGHT_BULB -> LightGag.arms(scene, t, time)?.let { return it }
             Scene.WAVE_BACK -> return ArmPose(null, Offset(0.44f + sin(time * 13f) * 0.06f, -0.16f + abs(sin(time * 13f)) * 0.02f))
             Scene.GIGGLE -> return ArmPose(Offset(-0.05f, 0.22f), Offset(0.05f, 0.22f))
             Scene.SHY -> return if (t < 1.6f) ArmPose(Offset(-0.19f, -0.06f), Offset(0.19f, -0.06f)) else ArmPose(Offset(-0.14f, 0.3f), Offset(0.14f, 0.3f))

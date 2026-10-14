@@ -67,6 +67,8 @@ fun RobotFace(
     mimic: Boolean = false,
     /** True while a speech bubble is up: waves hello. */
     waving: Boolean = false,
+    /** When the runtime asked the current light gag to switch off (0 = staying on). */
+    lightOffAt: Long = 0L,
 ) {
     val animator = remember { FaceAnimator() }
     val baseColor = remember(face.color) { parseHexColor(face.color) }
@@ -75,6 +77,7 @@ fun RobotFace(
     val ambientState = rememberUpdatedState(ambient)
     val mimicState = rememberUpdatedState(mimic)
     val wavingState = rememberUpdatedState(waving)
+    val lightOffState = rememberUpdatedState(lightOffAt)
     val sceneState = rememberUpdatedState(Scene.of(scene) to sceneStartedAt)
     val keyState = rememberUpdatedState(activity to emotion)
     val gazeState = rememberUpdatedState(gaze)
@@ -116,7 +119,10 @@ fun RobotFace(
                     null -> false
                 }
                 val sceneT = (System.currentTimeMillis() - startedAt) / 1000f
+                val offAt = lightOffState.value
+                LightGag.offT = if (offAt >= startedAt && offAt > 0L) (offAt - startedAt) / 1000f else Float.MAX_VALUE
                 val frame = if (applies && sc != null && sceneT in 0f..sc.seconds) Life.frame(sc, sceneT, startedAt, color, base) else null
+                animator.lit = if (frame != null && sc != null) LightGag.level(sc, sceneT) else 0f
                 // Mirror the user: copy head tilt and winks while idle.
                 val user = gazeState.value
                 // Camera tracking follows the eyes continuously, but head tilt is an occasional mimic beat.
@@ -148,7 +154,18 @@ fun RobotFace(
 
     Canvas(modifier.fillMaxSize().background(Color.Black)) {
         @Suppress("UNUSED_EXPRESSION") tick // redraw every frame without recomposing
-        drawFace(animator, faceState.value, activity)
+        val lit = animator.lit
+        if (lit <= 0.001f) {
+            drawFace(animator, faceState.value, activity)
+        } else {
+            // Light mode: the screen becomes a white panel (lights the face for the camera / the room) and the face
+            // is re-inked in a dark shade of the user's color, so it stays visible on the white.
+            drawContext.canvas.saveLayer(Rect(Offset.Zero, size), androidx.compose.ui.graphics.Paint())
+            drawFace(animator, faceState.value, activity)
+            drawRect(androidx.compose.ui.graphics.lerp(colorState.value, Color.Black, 0.8f), alpha = lit, blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop)
+            drawRect(Color.White, alpha = lit, blendMode = androidx.compose.ui.graphics.BlendMode.DstOver)
+            drawContext.canvas.restore()
+        }
     }
 }
 
@@ -256,6 +273,8 @@ internal class FaceAnimator {
     var ambient = Ambient()
     /** Target arm pose and smoothed hand positions / visibility. */
     var arms = ArmPose()
+    /** 0..1 white "light" level of the current light gag (not a spring: the gag script eases it). */
+    var lit = 0f
     val lhx = Spring(-SHOULDER.x); val lhy = Spring(SHOULDER.y); val lha = Spring()
     val rhx = Spring(SHOULDER.x); val rhy = Spring(SHOULDER.y); val rha = Spring()
 
@@ -525,7 +544,10 @@ private fun DrawScope.drawFace(a: FaceAnimator, cfg: FaceConfig, activity: Activ
         }
         a.scene?.let { sc ->
             val geo = FaceGeometry(cx, cy, unit, eyesY, mouthY, sep, ew, eh)
-            drawSceneProps(sc, a.sceneT, a.sceneSeed, geo, color, sc.seconds, a.ambient)
+            if (LightGag.isLight(sc)) {
+                val hand = if (a.rha.x > 0.5f) Offset(a.rhx.x, a.rhy.x) else null
+                with(LightGag) { drawLightProp(sc, a.sceneT, geo, color.copy(alpha = color.alpha * min(1f, a.sceneT * 2f)), hand) }
+            } else drawSceneProps(sc, a.sceneT, a.sceneSeed, geo, color, sc.seconds, a.ambient)
         }
         // Arms on top of props so hands hold them.
         if (cfg.showArms) {

@@ -218,13 +218,22 @@ class LocalApiServer(private val g: AppGraph) {
                         buildJsonObject { put("key", sc.key); put("label", sc.label); put("kind", sc.kind.name.lowercase()); put("seconds", sc.seconds) }
                     })
                 })
+                // Screen as a light: {"on":true,"style":"lamp|phone|bulb|random","seconds":300} or {"on":false}.
+                post("/light", guard {
+                    val b = AppJson.parseToJsonElement(call.receiveText()) as JsonObject
+                    val on = (b["on"] as? kotlinx.serialization.json.JsonPrimitive)?.content != "false"
+                    val style = (b["style"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "random"
+                    val secs = (b["seconds"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 300
+                    call.respond(buildJsonObject { put("result", if (on) g.runtime.lightOn(style, secs) else g.runtime.lightOff()) })
+                })
                 post("/scene", guard {
                     val sc = Scene.of(call.receive<SceneBody>().scene) ?: error("unknown scene; GET /scenes")
                     when (sc.kind) {
                         Scene.Kind.DREAM -> g.runtime.sleep()
                         else -> g.runtime.wake(greet = false)
                     }
-                    g.runtime.life.play(sc)
+                    if (io.github.assistent.face.LightGag.isLight(sc)) g.runtime.lightOn(sc.key.removePrefix("light_"), 15)
+                    else g.runtime.life.play(sc)
                     call.respond(ok())
                 })
                 delete("/scene", guard { g.runtime.life.clear(); call.respond(ok()) })

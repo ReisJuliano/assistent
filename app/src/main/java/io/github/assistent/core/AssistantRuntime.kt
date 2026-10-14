@@ -8,7 +8,9 @@ import io.github.assistent.data.PersonDao
 import io.github.assistent.data.ReminderEntity
 import io.github.assistent.tools.Tool
 import io.github.assistent.tools.ToolRegistry
+import io.github.assistent.tools.num
 import io.github.assistent.tools.params
+import io.github.assistent.tools.str
 import io.github.assistent.voice.Listener
 import io.github.assistent.voice.Speaker
 import io.github.assistent.voice.BargeInDetector
@@ -66,6 +68,7 @@ class AssistantRuntime(
 
     init {
         tools.register(SleepTool())
+        tools.register(LightTool())
         life.onSelfWake = {
             scope.launch {
                 wake(greet = true, interaction = false)
@@ -96,19 +99,47 @@ class AssistantRuntime(
 
     fun touch() { lastInteraction = System.currentTimeMillis() }
 
-    /** Temporarily brightens the display while the camera tries to confirm a face. */
+    /** Lights the face for the camera when it is too dark to recognise someone. */
     fun requestLightAssist() {
-        if (state.value.lightAssist) return
-        state.update { it.copy(lightAssist = true) }
-        life.play(io.github.assistent.face.Scene.LIGHT_ASSIST)
-        scope.launch {
-            delay(7_000L)
-            state.update { it.copy(lightAssist = false) }
-        }
+        lightOn("random", 12)
     }
 
-    fun clearLightAssist() {
-        if (state.value.lightAssist) state.update { it.copy(lightAssist = false) }
+    private var lightJob: Job? = null
+
+    /**
+     * Turns the screen into a light (white panel at full brightness) with a gag: desk lamp, phone flashlight or a
+     * bright-idea bulb ([style] lamp/phone/bulb/random). Stays on for [seconds] or until [lightOff].
+     */
+    fun lightOn(style: String = "random", seconds: Int = 300): String {
+        val current = io.github.assistent.face.Scene.of(state.value.scene)
+        val lit = io.github.assistent.face.LightGag.isLight(current) && state.value.lightOffAt == 0L
+        if (!lit) {
+            if (state.value.activity == Activity.SLEEPING) wake(greet = false)
+            state.update { it.copy(lightOffAt = 0L) }
+            life.play(io.github.assistent.face.LightGag.sceneFor(style))
+        }
+        lightJob?.cancel()
+        val secs = seconds.coerceIn(5, 3600)
+        lightJob = scope.launch { delay(secs * 1000L); lightOff() }
+        return if (lit) "light already on, kept for $secs s" else "light on for $secs s"
+    }
+
+    /** Switches the light off with the gag's own gesture (pulls the chain again, taps the phone...). */
+    fun lightOff(): String {
+        val s = state.value
+        val sc = io.github.assistent.face.Scene.of(s.scene)
+        if (!io.github.assistent.face.LightGag.isLight(sc) || sc == null || s.lightOffAt != 0L) return "light is off"
+        lightJob?.cancel()
+        // Never switch off before the gag has even turned it on.
+        val earliest = s.sceneStartedAt + (io.github.assistent.face.LightGag.onAt(sc) * 1000).toLong() + 600
+        lightJob = scope.launch {
+            delay((earliest - System.currentTimeMillis()).coerceAtLeast(0))
+            state.update { it.copy(lightOffAt = System.currentTimeMillis()) }
+            delay((io.github.assistent.face.LightGag.endAfterOff(sc) * 1000).toLong())
+            if (state.value.scene == sc.key) life.clear()
+            state.update { it.copy(lightOffAt = 0L) }
+        }
+        return "light off"
     }
 
     fun setActivity(a: Activity) {
@@ -544,6 +575,21 @@ class AssistantRuntime(
 
     fun onUnknownFace(similarity: Float) {
         state.update { it.copy(faceStatus = "unknown", faceIdentity = null, faceSimilarity = similarity.coerceAtLeast(0f)) }
+    }
+
+    private inner class LightTool : Tool {
+        override val name = "screen_light"
+        override val description = "Use your own screen as a light: it turns white at full brightness with a funny gag " +
+            "(desk lamp, phone flashlight or bright-idea bulb). Use when the user asks you to turn on a light/lamp/lanterna, " +
+            "says it is dark, or wants to see better; action off to switch it off. (device_control flashlight is the phone's real LED on the back.)"
+        override val parameters = params {
+            string("action", "on or off", enum = listOf("on", "off"))
+            string("style", "Gag", required = false, enum = listOf("random", "lamp", "phone", "bulb"))
+            number("minutes", "How long to stay on (default 5)", required = false)
+        }
+        override suspend fun execute(args: JsonObject): String =
+            if (args.str("action") == "off") lightOff()
+            else lightOn(args.str("style") ?: "random", ((args.num("minutes") ?: 5.0) * 60).toInt())
     }
 
     private inner class SleepTool : Tool {

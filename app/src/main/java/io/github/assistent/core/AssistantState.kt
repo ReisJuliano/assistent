@@ -79,8 +79,8 @@ data class AssistantState(
     val faceStatus: String = "no_face",
     val faceIdentity: String? = null,
     val faceSimilarity: Float = 0f,
-    /** Temporary visual light-assist effect used when face recognition is unsafe in darkness. */
-    val lightAssist: Boolean = false,
+    /** When the current light gag was asked to switch off (0 = on / none). See `LightGag`. */
+    val lightOffAt: Long = 0L,
 )
 
 /** Real weather where the robot lives, shown as ambience on the face (rain, snow, heat, cold). */

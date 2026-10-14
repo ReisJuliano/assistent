@@ -44,7 +44,6 @@ import io.github.assistent.core.Ambient
 import io.github.assistent.face.RobotFace
 import io.github.assistent.service.AssistantService
 import io.github.assistent.ui.AppTheme
-import io.github.assistent.ui.LightAssistOverlay
 import io.github.assistent.ui.SettingsScreen
 import io.github.assistent.ui.SpeechBubble
 import io.github.assistent.ui.Subtitles
@@ -110,6 +109,7 @@ class MainActivity : ComponentActivity() {
                 audioLevel = graph.runtime::audioLevel,
                 scene = state.scene,
                 sceneStartedAt = state.sceneStartedAt,
+                lightOffAt = state.lightOffAt,
                 ambient = if (config.life.weatherEffects && (state.weatherActive || config.life.weatherAlways)) state.ambient else Ambient(),
                 mimic = config.life.enabled && config.life.mimic,
                 // Speech bubbles are not waves. The actual WAVE_BACK scene owns the arm gesture.
@@ -145,9 +145,13 @@ class MainActivity : ComponentActivity() {
                     )
                 },
             )
-            // The glow must be above RobotFace's black canvas; its translucent
-            // paint keeps the real animated arm visible underneath.
-            LightAssistOverlay(state.lightAssist)
+            // Light gags: the white screen only lights things up at full backlight.
+            val lighting = io.github.assistent.face.LightGag.isLight(io.github.assistent.face.Scene.of(state.scene))
+            LaunchedEffect(lighting) {
+                window.attributes = window.attributes.apply {
+                    screenBrightness = if (lighting) 1f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
+            }
             val cameraLabel = when (state.faceStatus) {
                 "recognized" -> "Vendo ${state.faceIdentity} (${(state.faceSimilarity * 100).toInt()}%)"
                 "unknown" -> "Rosto não reconhecido"

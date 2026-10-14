@@ -162,6 +162,7 @@ Eventos: `wake`, `sleep`, `user_said`, `reply`, `reminder`, `emotion`, `face_see
 | GET | `/scenes` | | Lista de cenas (atividades, sonhos, reações ao acordar) |
 | POST | `/scene` | `{"scene":"gaming"}` | Toca uma cena agora |
 | DELETE | `/scene` | | Para a cena atual |
+| POST | `/light` | `{"on":true,"style":"lamp","seconds":300}` / `{"on":false}` | Tela vira luz branca (brilho máximo) com uma gag: `lamp` (abajur), `phone` (lanterna do celular), `bulb` (ideia brilhante) ou `random` |
 | POST | `/ambient` | `{"condition":"rain","temperature":8}` | Força um clima (teste). Condições: `clear`, `cloudy`, `fog`, `drizzle`, `rain`, `storm`, `snow` |
 | POST | `/motion` | | Simula movimento na câmera (com ele dormindo) |
 | POST | `/bubble` | `{"text":"Oi!","speak":false}` | Mostra um balão de fala |

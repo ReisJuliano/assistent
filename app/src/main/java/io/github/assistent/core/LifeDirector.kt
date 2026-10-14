@@ -109,6 +109,9 @@ class LifeDirector(
     }
 
     fun play(scene: Scene) {
+        // The light gags hold the screen white; other scenes must not cut them off abruptly.
+        val current = Scene.of(state.value.scene)
+        if (io.github.assistent.face.LightGag.isLight(current) && !io.github.assistent.face.LightGag.isLight(scene)) return
         state.update { it.copy(scene = scene.key, sceneStartedAt = System.currentTimeMillis()) }
         lastLifeEvent = System.currentTimeMillis()
         recentScenes.addLast(scene)

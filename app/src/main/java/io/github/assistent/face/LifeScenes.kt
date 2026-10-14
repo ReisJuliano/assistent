@@ -30,7 +30,10 @@ import kotlin.random.Random
  */
 enum class Scene(val key: String, val seconds: Float, val kind: Kind, val label: String) {
     GAMING("gaming", 14f, Kind.AWAKE, "Videogame"),
-    LIGHT_ASSIST("light_assist", 7f, Kind.REACT, "Acendendo o abajur"),
+    // Light gags (see LightGag): they last until the runtime switches the light off, then get cleared.
+    LIGHT_LAMP("light_lamp", 3600f, Kind.REACT, "Luz: abajur"),
+    LIGHT_PHONE("light_phone", 3600f, Kind.REACT, "Luz: lanterna do celular"),
+    LIGHT_BULB("light_bulb", 3600f, Kind.REACT, "Luz: ideia brilhante"),
     READING("reading", 16f, Kind.AWAKE, "Lendo"),
     STUDYING("studying", 16f, Kind.AWAKE, "Estudando"),
     WALKING_DOG("walking_dog", 16f, Kind.AWAKE, "Passeando com o cachorro"),
@@ -314,13 +317,7 @@ object Life {
                 else -> SceneFrame(neutral.copy(mouthCurve = 0.12f), gaze = Offset(0f, 0f))
             }
 
-            Scene.LIGHT_ASSIST -> {
-                val reach = ease(prog(t, 0.15f, 1.5f))
-                SceneFrame(
-                    neutral.copy(mouthOpen = 0.16f, mouthWidth = 0.38f, browRaise = 0.35f, tilt = 2f),
-                    gaze = Offset(0.72f, 0.05f + 0.12f * reach),
-                )
-            }
+            Scene.LIGHT_LAMP, Scene.LIGHT_PHONE, Scene.LIGHT_BULB -> LightGag.frame(scene, t, sleeping, neutral, happy, joy, surprised)
 
             Scene.WAVE_BACK -> SceneFrame(happy.copy(tilt = 6f, mouthCurve = 0.7f, mouthWidth = 0.9f), gaze = Offset(0.1f, 0f), dy = -hop(t, 0f, 0.4f) * 0.03f)
 
@@ -634,7 +631,7 @@ internal fun DrawScope.drawSceneProps(
     fun fill(p: Path, a: Float = 1f) = drawPath(p, c.copy(alpha = c.alpha * a))
 
     when (scene) {
-        Scene.LIGHT_ASSIST -> Unit
+        Scene.LIGHT_LAMP, Scene.LIGHT_PHONE, Scene.LIGHT_BULB -> Unit // drawn by RobotFace (needs the hand position)
         Scene.GAMING, Scene.DREAM_GAME -> {
             val dream = scene == Scene.DREAM_GAME
             val center = if (dream) dreamCloud(g, t, sceneSeconds, ::stroke) else Offset(g.cx + sin(t * 9f) * u * 0.003f, g.mouthY + u * 0.2f)
