@@ -28,6 +28,8 @@ data class AppConfig(
     val people: PeopleConfig = PeopleConfig(),
     val memory: MemoryConfig = MemoryConfig(),
     val spotify: SpotifyConfig = SpotifyConfig(),
+    /** LAN devices that can receive local actions such as Wake-on-LAN. */
+    val lanDevices: List<LanDeviceConfig> = emptyList(),
     /** This physical device (never synced). */
     val device: DeviceConfig = DeviceConfig(),
     /** Other devices that are "the same robot" (never synced as config). */
@@ -46,6 +48,16 @@ data class SpotifyConfig(
     val accessToken: String = "",
     val refreshToken: String = "",
     val deviceId: String = "",
+)
+
+@Serializable
+data class LanDeviceConfig(
+    val id: String = "",
+    val name: String,
+    val mac: String,
+    val broadcast: String = "255.255.255.255",
+    val port: Int = 9,
+    val kind: String = "pc",
 )
 
 /** OpenAI-compatible endpoint. Default target: CLIProxyAPI with ChatGPT (Codex) OAuth. */

@@ -56,6 +56,8 @@ import io.github.assistent.tools.RememberTool
 import io.github.assistent.tools.StartTimerTool
 import io.github.assistent.tools.SpotifyPlayTool
 import io.github.assistent.tools.SpotifySimpleTool
+import io.github.assistent.tools.SpotifyDevicesTool
+import io.github.assistent.tools.SpotifyTransferTool
 import io.github.assistent.tools.SleepReportTool
 import io.github.assistent.tools.StartQuizTool
 import io.github.assistent.tools.RecordQuizScoreTool
@@ -142,6 +144,8 @@ class AppGraph(context: Context) {
             ListCheckTool(lists),
             ListRemoveTool(lists),
             SpotifyPlayTool(http, config),
+            SpotifyDevicesTool(http, config),
+            SpotifyTransferTool(http, config),
             SpotifySimpleTool("music_pause", "Pause Spotify playback.", "PUT", "me/player/pause", http, config),
             SpotifySimpleTool("music_next", "Skip to next Spotify track.", "POST", "me/player/next", http, config),
             SpotifySimpleTool("music_volume", "Set Spotify playback volume.", "PUT", "me/player/volume", http, config, hasVolume = true),
@@ -149,7 +153,7 @@ class AppGraph(context: Context) {
             SleepReportTool(sleep),
             StartQuizTool(llm, config),
             RecordQuizScoreTool(quizzes, presence),
-            DeviceTool(context),
+            DeviceTool(context, config),
         ),
         config = config,
         http = http,

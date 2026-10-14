@@ -15,6 +15,9 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 // ---------------------------------------------------------------- memory
 
@@ -149,12 +152,12 @@ internal fun fmt(epochMs: Long): String = java.time.Instant.ofEpochMilli(epochMs
 
 // ---------------------------------------------------------------- device
 
-class DeviceTool(private val context: Context) : Tool {
+class DeviceTool(private val context: Context, private val config: io.github.assistent.config.ConfigStore) : Tool {
     override val name = "device"
-    override val description = "Control this phone: flashlight on/off, media volume (0-100), open a URL, open an app by name, battery status."
+    override val description = "Control this phone and configured LAN devices: flashlight, volume, apps, battery, or Wake-on-LAN for a PC/TV."
     override val parameters = params {
-        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery"))
-        string("value", "Volume 0-100, URL, or app name, depending on action", required = false)
+        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "wake_lan"))
+        string("value", "Volume 0-100, URL, app name, or configured LAN device name", required = false)
     }
 
     override suspend fun execute(args: JsonObject): String {
@@ -175,8 +178,28 @@ class DeviceTool(private val context: Context) : Tool {
                 val bm = context.getSystemService(BatteryManager::class.java)
                 "battery ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%, charging=${bm.isCharging}"
             }
+            "wake_lan" -> wakeLan(value)
             else -> "unknown action"
         }
+    }
+
+    private fun wakeLan(value: String): String {
+        val devices = config.current.lanDevices
+        val device = devices.firstOrNull { it.name.equals(value, true) || it.id.equals(value, true) }
+            ?: return "LAN device '$value' is not configured"
+        val mac = device.mac.split(':', '-', ' ').filter(String::isNotBlank).mapNotNull { it.toIntOrNull(16) }
+        if (mac.size != 6) return "invalid MAC for ${device.name}"
+        val packet = ByteArray(102)
+        java.util.Arrays.fill(packet, 0, 6, 0xFF.toByte())
+        val macBytes = mac.map { it.toByte() }.toByteArray()
+        for (i in 0 until 16) System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6)
+        return runCatching {
+            DatagramSocket().use { socket ->
+                socket.broadcast = true
+                socket.send(DatagramPacket(packet, packet.size, InetAddress.getByName(device.broadcast), device.port.coerceIn(1, 65535)))
+            }
+            "wake-on-LAN sent to ${device.name}"
+        }.getOrElse { "wake-on-LAN failed for ${device.name}: ${it.message}" }
     }
 
     private fun torch(on: Boolean): String {

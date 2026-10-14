@@ -550,6 +550,7 @@ private fun SettingsList(
             }
             SettingsTab.HOME -> {
                 item { DevicesSection(graph, cfg, up) }
+                item { LanDevicesSection(cfg, up) }
                 item { WebhooksSection(cfg, up) }
             }
             SettingsTab.SYSTEM -> {
@@ -779,6 +780,43 @@ private fun UpdateSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> A
         }
         Button(onClick = { scope.launch { graph.updater.checkAndInstall() } }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Verificar agora") }
         Hint(if (status.startsWith("Versão")) status else "Versão ${io.github.assistent.BuildConfig.VERSION_NAME} · $status")
+    }
+}
+
+@Composable
+private fun LanDevicesSection(cfg: AppConfig, up: ((AppConfig) -> AppConfig) -> Unit) {
+    var adding by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var mac by remember { mutableStateOf("") }
+    var broadcast by remember { mutableStateOf("255.255.255.255") }
+    Section("Dispositivos da rede") {
+        Hint("Cadastre PCs ou TVs compatíveis com Wake-on-LAN. Depois diga: “acorde o PC do escritório”.")
+        cfg.lanDevices.forEach { device ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(device.name, fontWeight = FontWeight.Medium)
+                    Text(device.mac, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == device.id }) } }) {
+                    Icon(Icons.Default.Delete, "Remover")
+                }
+            }
+        }
+        if (adding) {
+            Field("Nome", name) { name = it }
+            Field("MAC (ex. AA:BB:CC:DD:EE:FF)", mac) { mac = it }
+            Field("Broadcast", broadcast) { broadcast = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(enabled = name.isNotBlank() && mac.isNotBlank(), onClick = {
+                    val id = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_")
+                    up { c -> c.copy(lanDevices = c.lanDevices.filterNot { it.id == id } + io.github.assistent.config.LanDeviceConfig(id, name.trim(), mac.trim(), broadcast.trim())) }
+                    name = ""; mac = ""; broadcast = "255.255.255.255"; adding = false
+                }) { Text("Salvar") }
+                TextButton(onClick = { adding = false }) { Text("Cancelar") }
+            }
+        } else {
+            FilledTonalButton(onClick = { adding = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Adicionar PC ou TV") }
+        }
     }
 }
 

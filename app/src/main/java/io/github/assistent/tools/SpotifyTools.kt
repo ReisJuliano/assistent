@@ -63,6 +63,44 @@ class SpotifySimpleTool(
     }
 }
 
+class SpotifyDevicesTool(private val http: OkHttpClient, private val config: ConfigStore) : Tool {
+    override val name = "music_devices"
+    override val description = "List the user's available Spotify Connect devices, such as this phone, a computer, TV, or smart speaker."
+    override val parameters = params()
+
+    override suspend fun execute(args: JsonObject): String {
+        val token = config.current.spotify.accessToken.takeIf { it.isNotBlank() } ?: return "spotify not connected"
+        val text = spotifyRequest(http, config, "GET", "me/player/devices", token)
+        return runCatching {
+            AppJson.parseToJsonElement(text).jsonObject["devices"]!!.jsonArray.joinToString("; ") { item ->
+                val obj = item.jsonObject
+                "${obj["name"]?.jsonPrimitive?.content} (${obj["type"]?.jsonPrimitive?.content}, id=${obj["id"]?.jsonPrimitive?.content})"
+            }.ifBlank { "no Spotify devices available" }
+        }.getOrElse { text }
+    }
+}
+
+class SpotifyTransferTool(private val http: OkHttpClient, private val config: ConfigStore) : Tool {
+    override val name = "music_transfer"
+    override val description = "Transfer Spotify playback to a named Connect device, such as Alexa, a TV, a PC, or this phone. Requires Spotify Premium."
+    override val parameters = params { string("device", "Device name or exact Spotify device id") }
+
+    override suspend fun execute(args: JsonObject): String {
+        val requested = args.str("device")?.trim().orEmpty()
+        if (requested.isBlank()) return "missing device"
+        val token = config.current.spotify.accessToken.takeIf { it.isNotBlank() } ?: return "spotify not connected"
+        val devices = spotifyRequest(http, config, "GET", "me/player/devices", token)
+        val target = runCatching {
+            AppJson.parseToJsonElement(devices).jsonObject["devices"]!!.jsonArray.map { it.jsonObject }
+                .firstOrNull { it["id"]?.jsonPrimitive?.content == requested || it["name"]?.jsonPrimitive?.content.equals(requested, true) }
+        }.getOrNull() ?: return "Spotify device '$requested' not found"
+        val id = target["id"]?.jsonPrimitive?.content ?: return "Spotify device has no id"
+        val body = buildJsonObject { put("device_ids", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive(id)))); put("play", true) }
+        val result = spotifyRequest(http, config, "PUT", "me/player", token, body)
+        return result.ifBlank { "playing on ${target["name"]?.jsonPrimitive?.content}" }
+    }
+}
+
 suspend fun spotifyRequest(
     http: OkHttpClient,
     config: ConfigStore,
