@@ -103,7 +103,9 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.mlkit.barcode)
 
-    implementation(libs.vosk.android) { artifact { type = "aar" } }
+    implementation(libs.vosk.android)
+    // Real ADB device protocol (network debugging) for Android TV control.
+    implementation("dev.mobile:dadb:${libs.versions.dadb.get()}@jar") // jar only: Gradle mis-resolves it as an AAR { artifact { type = "aar" } }
     implementation(libs.jna) { artifact { type = "aar" } }
 
     // sherpa-onnx (speaker recognition), fetched by the downloadSherpaOnnx task into app/libs (git-ignored).

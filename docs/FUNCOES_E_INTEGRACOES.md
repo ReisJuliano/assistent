@@ -142,6 +142,19 @@ de estado e pela mesma selecao por comodo/pessoa.
 - O APK inicia no emulador, os testes passam e existe evidencia de teste em
   pelo menos um dispositivo Android TV real ou em um alvo ADB controlavel.
 
+### Registro de entrega (2026-10-14)
+
+- O cliente ADB anterior falava o protocolo do *servidor adb do PC* (porta 5037), não o da TV (5555, CNXN/AUTH RSA):
+  não funcionava com TV real. Substituído por **dadb 2.0.0** (`AdbRemote` em `tools/TvAdb.kt`, chave RSA própria em
+  `filesDir/adb`).
+- `tv_control` confirma pelo estado real lido da TV: energia (`dumpsys power`), app em primeiro plano, sessão de mídia.
+  Ações: status, power_on (Wake-on-LAN + `KEYCODE_WAKEUP` + polling), power_off, teclas, play/pause verificados,
+  open_app por nome amigável, search (links diretos YouTube/Netflix/Spotify ou intent SEARCH), type_text.
+- Teste real: o app conectou por ADB de rede no próprio emulador (`10.0.2.2:5555`) e confirmou abrir YouTube, buscar,
+  desligar e ligar a tela; app ausente (Netflix) é reportado como tal.
+- Falta para `[x]`: teste numa Android TV física (autorização de depuração na tela), Google Cast, histórico/"continuar",
+  modo cinema, escolha por cômodo com 2+ TVs.
+
 ## Bloco 2 - Audio e Spotify
 
 Status: `[~]`

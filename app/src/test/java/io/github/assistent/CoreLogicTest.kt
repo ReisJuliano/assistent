@@ -5,8 +5,6 @@ import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.Emotion
 import io.github.assistent.voice.WakeWordEngine
 import io.github.assistent.tools.WakeOnLan
-import io.github.assistent.tools.TvAdbWire
-import io.github.assistent.tools.TvAdbClient
 import io.github.assistent.brain.CapabilityPlanner
 import io.github.assistent.tools.DeviceDiscovery
 import java.net.ServerSocket
@@ -57,31 +55,6 @@ class CoreLogicTest {
     @Test fun wakeOnLanRejectsMalformedMac() {
         assertNull(WakeOnLan.parseMac("AA:BB:CC"))
         assertNull(WakeOnLan.parseMac("GG:BB:CC:DD:EE:FF"))
-    }
-
-    @Test fun androidTvAdbFramesServicesWithFourHexLength() {
-        assertEquals("000bshell:input", TvAdbWire.frame("shell:input").decodeToString())
-    }
-
-    @Test fun androidTvAdbClientCompletesARealWireExchange() {
-        ServerSocket(0).use { server ->
-            val executor = Executors.newSingleThreadExecutor()
-            val future = executor.submit {
-                server.accept().use { socket ->
-                    val input = socket.getInputStream()
-                    val size = input.readNBytes(4).toString(Charsets.US_ASCII).toInt(16)
-                    assertEquals("shell:echo online", input.readNBytes(size).toString(Charsets.UTF_8))
-                    socket.getOutputStream().apply {
-                        write("OKAY".toByteArray())
-                        write("online\n".toByteArray())
-                        flush()
-                    }
-                }
-            }
-            assertEquals("online", TvAdbClient("127.0.0.1", server.localPort).shell("echo online"))
-            future.get()
-            executor.shutdownNow()
-        }
     }
 
     @Test fun capabilityPlanningIsGeneralAndRequiresConfirmedResults() {

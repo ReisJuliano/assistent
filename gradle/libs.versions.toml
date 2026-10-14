@@ -18,6 +18,7 @@ litert = "1.4.0"
 zxing = "3.5.3"
 mlkitBarcode = "17.3.0"
 vosk = "0.3.75"
+dadb = "2.0.0"
 jna = "5.13.0"
 junit = "4.13.2"
 
@@ -56,6 +57,7 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 mlkit-barcode = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
 mlkit-face = { module = "com.google.mlkit:face-detection", version.ref = "mlkitFace" }
 vosk-android = { module = "com.alphacephei:vosk-android", version.ref = "vosk" }
+
 junit = { module = "junit:junit", version.ref = "junit" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 

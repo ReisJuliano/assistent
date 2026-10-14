@@ -156,7 +156,7 @@ class AppGraph(context: Context) {
             StartQuizTool(llm, config),
             RecordQuizScoreTool(quizzes, presence),
             deviceTool,
-            TvControlTool(config),
+            TvControlTool(context, config),
         ),
         config = config,
         http = http,
