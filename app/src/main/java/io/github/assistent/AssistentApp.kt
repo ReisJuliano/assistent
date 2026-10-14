@@ -251,6 +251,11 @@ class AppGraph(context: Context) {
         val unknown = greeter.onNoKnownPersonSeen
         greeter.onNoKnownPersonSeen = { unknown(); body.onFaceGone() }
     }
+    /** Every tool call as an observable, cancellable operation (HUD, SSE, API). */
+    val operations = io.github.assistent.core.Operations(events, scope).also {
+        tools.operations = it
+        runtime.cancelOperations = { it.cancelAll() }
+    }
     val updater = io.github.assistent.update.Updater(context, config, http, scope).also { it.start() }
     val api = LocalApiServer(this)
 }

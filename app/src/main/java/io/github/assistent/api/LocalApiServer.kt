@@ -585,6 +585,9 @@ class LocalApiServer(private val g: AppGraph) {
                         }
                     })
                 })
+                // What the robot is doing right now (tool calls with their real state) and cancel-all ("parar").
+                get("/operations", guard { call.respond(g.operations.list.value) })
+                post("/operations/cancel", guard { call.respond(buildJsonObject { put("cancelled", g.operations.cancelAll()) }) })
                 // Wake phrase self-test: speaks {"text"} with the system voice (or takes a WAV body) and runs the
                 // wake detector on it. Shows whether the name is in the recognizer's vocabulary and how sure it is.
                 post("/wake/selftest", guard {
@@ -654,7 +657,7 @@ class LocalApiServer(private val g: AppGraph) {
                 })
                 post("/tools/{name}", guard {
                     val tool = g.tools.find(call.parameters["name"]!!) ?: error("unknown tool")
-                    call.respond(buildJsonObject { put("result", tool.execute(call.receive<ToolBody>().args)) })
+                    call.respond(buildJsonObject { put("result", g.tools.run(tool, call.receive<ToolBody>().args)) })
                 })
             }
         }

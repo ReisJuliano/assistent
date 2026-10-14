@@ -469,8 +469,12 @@ class AssistantRuntime(
         return t == "parar" || t == "pare" || t == "para tudo" || t == "pare tudo" || t == "silêncio" || t == "silencio"
     }
 
-    /** Immediate hard stop for speech, bubbles and life scenes. */
+    /** Set by the app graph: cancels every running tool operation. */
+    var cancelOperations: () -> Unit = {}
+
+    /** Immediate hard stop for speech, bubbles, life scenes and running operations. */
     fun stopEverything() {
+        cancelOperations()
         interruptRequested = true
         speechPipeline?.cancel()
         activeChatJob?.cancel()

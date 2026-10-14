@@ -192,6 +192,11 @@ class MainActivity : ComponentActivity() {
                     )
                 },
             )
+            val ops by graph.operations.list.collectAsState()
+            io.github.assistent.ui.OperationsHud(
+                ops, io.github.assistent.face.parseHexColor(config.face.color),
+                Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 16.dp),
+            )
             // Light gags: the white screen only lights things up at full backlight.
             val lighting = io.github.assistent.face.LightGag.isLight(io.github.assistent.face.Scene.of(state.scene))
             LaunchedEffect(lighting) {

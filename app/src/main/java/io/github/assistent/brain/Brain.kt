@@ -9,6 +9,8 @@ import io.github.assistent.core.PresenceTracker
 import io.github.assistent.data.MemoryRepository
 import io.github.assistent.tools.ToolRegistry
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
@@ -95,7 +97,8 @@ class Brain(
 
         var final: ChatMessage? = null
         var useStream = onText != null
-        var actionFailed = false
+        // Last outcome per action tool: a failed *action* that was never retried successfully must not be claimed as done.
+        val actionOutcome = linkedMapOf<String, Boolean>()
         for (round in 0..cfg.llm.maxToolRounds) {
             onActivity(Activity.THINKING)
             // Last round: no tools, force an answer.
@@ -126,14 +129,27 @@ class Brain(
             }
             val assistantMsg = ChatMessage("assistant", msg.content, toolCalls = calls)
             messages += assistantMsg; turn += assistantMsg
-            for (call in calls) {
-                val tool = tools.find(call.function.name)
-                onActivity(tool?.activity ?: Activity.THINKING)
-                val result = if (tool == null) "unknown tool ${call.function.name}" else runCatching {
-                    val args = runCatching { AppJson.parseToJsonElement(call.function.arguments).jsonObject }.getOrDefault(JsonObject(emptyMap()))
-                    tool.execute(args)
-                }.getOrElse { "error: ${it.message}" }
-                if (result.startsWith("error:") || result.startsWith("unknown tool") || result.startsWith("missing") || result.startsWith("need ") || result.startsWith("that time is")) actionFailed = true
+            // Independent calls of the same round run in parallel (e.g. weather + a search); results keep their order.
+            calls.mapNotNull { tools.find(it.function.name) }.firstOrNull()?.let { onActivity(it.activity) }
+            val results = kotlinx.coroutines.coroutineScope {
+                calls.map { call ->
+                    async {
+                        val tool = tools.find(call.function.name)
+                        if (tool == null) "unknown tool ${call.function.name}" else try {
+                            val args = runCatching { AppJson.parseToJsonElement(call.function.arguments).jsonObject }.getOrDefault(JsonObject(emptyMap()))
+                            tools.run(tool, args)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "error: ${e.message}"
+                        }
+                    }
+                }.awaitAll()
+            }
+            calls.zip(results).forEach { (call, result) ->
+                if (call.function.name !in READ_ONLY_TOOLS) {
+                    actionOutcome[call.function.name] = io.github.assistent.core.Operations.outcome(result) != "failed"
+                }
                 Log.d(TAG, "tool ${call.function.name} -> ${result.take(200)}")
                 used += call.function.name
                 val toolMsg = ChatMessage("tool", result.take(8000), toolCallId = call.id)
@@ -143,6 +159,7 @@ class Brain(
 
         val (emotion, parsedText) = parseEmotion(final?.content.orEmpty())
         val asksReminder = userText.lowercase().let { it.contains("lembrete") || it.contains("me lembre") || it.contains("alarme") }
+        val actionFailed = actionOutcome.values.any { !it }
         val text = if (actionFailed) {
             "N\u00e3o consegui concluir essa a\u00e7\u00e3o. N\u00e3o vou fingir que ela foi realizada."
         } else if (asksReminder && "create_reminder" !in used) {
@@ -224,6 +241,13 @@ class Brain(
             "sarcastico" to "witty and sarcastic, playful teasing and irony, but still gives the right answer.",
             "fofo" to "super sweet and cute, affectionate, enthusiastic like a small pet robot.",
             "dramatico" to "theatrical and over-dramatic, treats everything like an epic event, for comedy.",
+        )
+
+        /** Tools that only read/look things up: their failures are normal (a page 403s, another one is read). */
+        private val READ_ONLY_TOOLS = setOf(
+            "web_search", "read_webpage", "fetch_url", "get_weather", "recall", "list_reminders", "list_timers", "list_events",
+            "whats_next", "list_messages", "list_show", "where_is", "list_rooms", "music_now_playing", "spotify_devices",
+            "sleep_report",
         )
 
         private val PLAYFUL_TONES = setOf("descontraido", "sarcastico", "dramatico", "alegre")

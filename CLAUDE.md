@@ -290,6 +290,17 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
   edit is saved immediately; there is no save button.
 - `device`, `mesh` and `api` are per-device; everything else is shared across the mesh (`Mesh.shared`).
 
+### Operations: visible, parallel, cancellable tool calls (`core/Operations.kt`, `ui/OperationsHud.kt`)
+
+- Every tool call goes through `ToolRegistry.run` → `Operations.track`: an `Operation` (id, label pt-BR, kind, state)
+  shown as a chip in the face's corner (icon per kind, spinner → check / error / "?" / cancelled) and emitted as SSE
+  `tool_started` / `tool_succeeded` / `tool_failed` / `tool_unknown` / `tool_cancelled`. The state comes from the tool's
+  own words (`Operations.outcome`): "FALHOU", "não cadastrada", "sem confirmação"... never shown as success.
+- Tool calls of one model round run in parallel (`async`), results keep their order. `stopEverything` ("parar") and
+  `POST /operations/cancel` cancel all running operations. `GET /operations` lists them.
+- The brain only overrides a reply with "não consegui concluir" when an *action* tool's last attempt failed;
+  read-only tools (search, read page, weather…) failing is normal and doesn't discard a good answer.
+
 ### Tools
 
 Implement `Tool` (`name`, `description`, JSON-schema `parameters` via `params { … }`, `activity` for the face while
