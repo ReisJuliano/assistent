@@ -20,6 +20,40 @@ isolada como concluida apenas porque sua API foi criada.
    `./gradlew.bat assembleDebug testDebugUnitTest`, instalar o APK, testar pelo
    API local e registrar um commit no Git.
 
+## Regra transversal - feedback visual de ferramentas
+
+Toda funcao que possa ser solicitada por voz deve ser uma operacao observavel,
+e nao apenas uma frase da IA. Ao ouvir o pedido, o assistente mostra que entendeu,
+aciona a ferramenta real e acompanha visualmente cada etapa ate sucesso, falha,
+cancelamento ou estado desconhecido. Isso vale tambem para toque, API e mesh.
+
+- A operacao recebe um `operationId` e publica estado `started`, `running`,
+  `progress`, `succeeded`, `failed`, `cancelled` ou `unknown`.
+- A animacao nunca afirma sucesso antes da confirmacao tecnica. Timeout,
+  permissao negada, microfone indisponivel, camera sem leitura e dispositivo
+  ausente aparecem na tela e chegam a fala do robo.
+- Operacoes independentes podem mostrar animacoes simultaneas e continuam
+  executando sem formar uma fila unica que trave o rosto, a fala ou a escuta.
+- Cada ferramenta deve declarar sua cena/proprietario visual, seu evento de
+  inicio e fim, e seu teste de erro. A palavra `parar` cancela todas as
+  operacoes cancelaveis.
+
+### Catalogo visual minimo
+
+| Ferramenta | Feedback visual obrigatorio |
+|---|---|
+| `device_discover` | telas de TV, celular e PC surgem ao redor do robo; linhas mostram busca e conexao por dispositivo |
+| Reconhecimento facial | o robo pega uma lupa com a mao e examina a leitura atual da camera; baixa confianca pede luz ou reposicionamento |
+| Gravacao/identificacao de voz | microfone na mao, ondas de audio e indicador de captacao somente durante audio real |
+| Pesquisa na internet | nos e redes se conectam, pacotes percorrem fontes, depois aparece comparacao e resultado |
+| TV/musica/casa | controle remoto, alto-falante ou aparelho correspondente; descoberta, comando e confirmacao ficam distintos |
+| Tarefa composta | varios paineis/dispositivos rodam em paralelo, cada um com progresso e resultado proprio |
+
+As cenas usam a mao existente em `Arms.pose` e props de
+`face/LifeScenes.kt`; nao criar uma terceira mao como desenho independente.
+O teste de cada item deve iniciar a acao por voz e confirmar por API/evento e
+por screenshot que a animacao acompanha o estado real.
+
 ## Status
 
 - `[x]` fluxo completo implementado e verificado

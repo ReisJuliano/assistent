@@ -26,6 +26,61 @@ claramente no bloco o que ainda impede o aceite completo.
 - Multi-aparelho: dados compartilhados devem ser propagados pelo `Mesh` (como `shareMemory`/`sharePerson`).
 - Documente rotas novas em `docs/API.md`. Rode `./gradlew assembleDebug testDebugUnitTest` e teste no emulador via API + screenshot.
 
+### Regra transversal: ferramenta acionada por voz sempre tem feedback visual
+
+Quando a pessoa pedir uma tarefa por voz, o fluxo deve reconhecer a intencao,
+acionar a `Tool` correspondente e mostrar claramente o que esta acontecendo.
+Nao basta a IA dizer que vai fazer: a animacao deve acompanhar o estado real da
+ferramenta e terminar em sucesso, falha, cancelamento ou estado desconhecido.
+
+- Antes de executar: mostrar uma reacao curta de escuta/entendimento, com boca,
+  olhos e postura coerentes com a tarefa.
+- Durante a execucao: usar uma cena ou prop especifica, sem bloquear conversa,
+  musica, reconhecimento ou outras ferramentas independentes. Cada tarefa tem
+  `operationId`, progresso, timeout e cancelamento.
+- Ao concluir: mostrar o resultado real e emitir o evento da ferramenta. Em
+  erro ou timeout, mostrar a etapa que falhou e falar uma alternativa; nunca
+  confirmar uma acao que nao foi executada.
+- A mesma linguagem visual deve funcionar por voz, toque, API e mesh, para que
+  o usuario saiba que todos os caminhos acionam a mesma operacao.
+
+#### Animacoes por tipo de ferramenta
+
+- **Descoberta de dispositivos:** o robo exibe pequenos paineis/telas de TV,
+  celular e PC aparecendo ao redor dele, procurando e conectando linhas entre
+  os dispositivos. Cada painel muda para encontrado, conectando ou falhou.
+- **Reconhecimento facial:** ele pega uma lupa com a mao e examina o rosto;
+  a lupa acompanha a leitura real da camera. Se houver baixa qualidade, mostra
+  duvida e pede luz ou reposicionamento, sem inventar uma identidade.
+- **Gravacao ou identificacao de voz:** ele segura um microfone, mostra ondas
+  de audio e um indicador de captacao. O indicador so aparece enquanto houver
+  audio sendo gravado de verdade; falha de permissao ou microfone deve ser
+  visivel e falada.
+- **Pesquisa na internet:** ele abre uma rede de nos conectados, com pacotes
+  viajando entre fontes e o robo. A animacao deve indicar pesquisando,
+  comparando fontes e resultado pronto, sem sugerir que uma resposta foi
+  verificada quando a busca falhou.
+- **TV, musica e casa:** usar o objeto correspondente (controle remoto,
+  alto-falante, lampada ou dispositivo) e mostrar descoberta, conexao, comando
+  e confirmacao de estado como etapas separadas.
+- **Tarefas compostas:** exibir os dispositivos/etapas independentes ao mesmo
+  tempo, mantendo cada um em seu estado. Uma etapa lenta nao pode congelar as
+  animacoes nem impedir outra acao independente.
+
+#### Implementacao e aceite dessa regra
+
+- Criar um estado visual generico de operacao (`started`, `running`, `progress`,
+  `succeeded`, `failed`, `cancelled`, `unknown`) ligado ao `operationId`.
+- Criar cenas/props reutilizaveis em `face/LifeScenes.kt` e `Arms.pose`, sem
+  desenhar uma segunda mao ou substituir a mao existente por um overlay.
+- Emitir eventos `tool_started`, `tool_progress`, `tool_succeeded`,
+  `tool_failed` e `tool_cancelled` pelo `EventDispatcher` e pela API/SSE.
+- Testar cada fluxo iniciado por frase de voz, incluindo permissao negada,
+  ausencia de dispositivo, timeout e cancelamento com a palavra `parar`.
+- O criterio visual so passa quando a tela mostra a operacao correta durante a
+  execucao, o estado final corresponde ao resultado real e a conversa continua
+  responsiva em paralelo.
+
 ---
 
 ## 0. Base comum: "quem está falando/presente"
