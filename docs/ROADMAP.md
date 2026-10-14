@@ -6,6 +6,14 @@ Plano de implementação para quem continuar o projeto (pessoa ou agente como Co
 Cada item traz: objetivo, comportamento, dados, arquivos, API, ferramentas da IA, rosto/animação e critérios de
 aceite. A ordem sugerida está no fim.
 
+## Ordem oficial por blocos
+
+Antes de escolher um item abaixo, consulte [FUNCOES_E_INTEGRACOES.md](FUNCOES_E_INTEGRACOES.md). Ele define os
+blocos completos e suas dependências. Uma tarefa relacionada a TV, por exemplo, deve concluir o bloco inteiro de
+dispositivos e TV: cadastro, descoberta, Wake-on-LAN, verificação, ADB, reprodução, filmes, histórico e modo cinema.
+Não marque uma parte isolada como concluída. Ao iniciar um bloco, termine todas as partes relacionadas, ou registre
+claramente no bloco o que ainda impede o aceite completo.
+
 ## Regras gerais (valem para tudo)
 
 - Código, identificadores e comentários em inglês; textos para o usuário em pt-BR.
