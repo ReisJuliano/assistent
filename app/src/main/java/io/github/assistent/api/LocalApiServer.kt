@@ -393,6 +393,12 @@ class LocalApiServer(private val g: AppGraph) {
                 delete("/reminders/{id}", guard {
                     call.respond(buildJsonObject { put("deleted", g.reminders.cancel(call.parameters["id"]!!.toLong())) })
                 })
+                // The line it would say for this reminder right now (doesn't fire it).
+                get("/reminders/{id}/preview", guard {
+                    val r = g.db.reminders().get(call.parameters["id"]!!.toLong()) ?: error("not found")
+                    val owner = r.personId?.let { g.db.people().get(it)?.name } ?: g.config.current.personality.userName
+                    call.respond(buildJsonObject { put("text", g.runtime.reminderLine(r, owner)) })
+                })
                 post("/reminders/{id}/ack", guard {
                     call.respond(buildJsonObject { put("acknowledged", g.reminders.acknowledge(call.parameters["id"]!!.toLong())) })
                 })

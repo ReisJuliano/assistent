@@ -91,6 +91,8 @@ class CreateReminderTool(private val scheduler: ReminderScheduler, private val p
         string("type", "Reminder type", required = false, enum = listOf("generic", "medicine", "water", "food", "exercise", "custom"))
         boolean("confirm", "Require spoken/tap/app confirmation", required = false)
         number("nag_every_minutes", "Repeat until confirmed every N minutes", required = false)
+        string("phrase", "Exact words to say when it fires, only if the user dictated them ({n} = person's name)", required = false)
+        string("style", "How the reminder should sound if the user asked (e.g. motivacional, engraçado, como um pirata)", required = false)
     }
 
     override suspend fun execute(args: JsonObject): String {
@@ -109,6 +111,8 @@ class CreateReminderTool(private val scheduler: ReminderScheduler, private val p
             requireConfirm = args.bool("confirm") ?: false,
             nagEveryMinutes = args.num("nag_every_minutes")?.toInt() ?: 0,
             animation = args.str("type") ?: "",
+            phrase = args.str("phrase") ?: "",
+            style = args.str("style") ?: "",
         )
         return "created #${r.id} for ${fmt(r.triggerAt)} (${r.kind}, repeat ${r.repeat})"
     }

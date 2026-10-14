@@ -387,15 +387,16 @@ class AssistantRuntime(
         events.emit("reminder", buildJsonObject { put("id", r.id); put("message", r.message); put("kind", r.kind); put("type", r.type) })
         scope.launch {
             val owner = r.personId?.let { people.get(it)?.name } ?: config.current.personality.userName
+            val text = reminderLine(r, owner)
             val here = config.current.device.room
             val remote = mesh?.whereIs(owner, withinMs = 10 * 60_000)
             val sentRemote = remote?.takeIf { owner.isNotBlank() && !it.room.equals(here, true) }?.let {
-                mesh?.sayInRoom(it.room, r.message) == true
+                mesh?.sayInRoom(it.room, text) == true
             } == true
             if (!sentRemote) {
                 wake(greet = false)
                 reminderScene(r)?.let { life.play(it) }
-                say(r.message, if (r.kind == "alarm") Emotion.SURPRISED else Emotion.HAPPY)
+                say(text, if (r.kind == "alarm") Emotion.SURPRISED else Emotion.HAPPY)
             }
         }
     }
@@ -410,6 +411,18 @@ class AssistantRuntime(
         } else {
             showBubble(text, speak = true, emotion = Emotion.SURPRISED)
         }
+    }
+
+    /** Set by the app graph: personalised reminder lines. */
+    var reminderPhrases: ReminderPhrases? = null
+
+    /** The spoken line for a reminder; nags (unconfirmed repeats) get more insistent. */
+    suspend fun reminderLine(r: ReminderEntity, owner: String): String {
+        val nag = r.firstFiredAt?.let { first ->
+            val every = (if (r.nagEveryMinutes > 0) r.nagEveryMinutes else 5) * 60_000L
+            ((System.currentTimeMillis() - first) / every).toInt().coerceAtLeast(1)
+        } ?: 0
+        return reminderPhrases?.line(r, owner, nag) ?: r.message
     }
 
     private fun reminderScene(r: ReminderEntity): io.github.assistent.face.Scene? {

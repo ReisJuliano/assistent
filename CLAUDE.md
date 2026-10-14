@@ -188,6 +188,16 @@ microphone stream can be analysed for music and loud sounds. The Portuguese smal
 Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback comb (metallic) + optional bit-crush, presets
 `off/light/classic/heavy` (`tts.robotVoice`).
 
+### Reminder lines and humour (`core/ReminderPhrases.kt`, `Brain.humorInstruction`)
+
+- A firing reminder is spoken through `runtime.reminderLine(r, owner)`: the reminder's own `phrase` (exact words,
+  `{n}`/`{msg}`) → an AI line in the configured tone + the reminder's `style` (8 s timeout, skipped while
+  `LlmQuota.blocked`, toggle `reminders.aiPhrases`) → hand-written templates per type. Unconfirmed repeats (nags)
+  get more insistent. Medicine lines must keep name/dose and never joke. Preview with `GET /reminders/{id}/preview`.
+- `personality.jokes` (`auto` = descontraido/sarcastico/dramatico/alegre tones, `always`, `never`) adds a system-prompt
+  line asking for one short joke about the subject itself (search results, weather, facts) after the useful answer,
+  never on sad/health/emergency topics or at the user's expense.
+
 ### Phrases (`core/PhrasePool.kt`, `core/Catchphrases.kt`)
 
 - Every short line said spontaneously comes from a **category** with hand-written examples. The AI generates batches

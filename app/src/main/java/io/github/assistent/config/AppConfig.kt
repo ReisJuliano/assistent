@@ -23,6 +23,7 @@ data class AppConfig(
     val events: EventsConfig = EventsConfig(),
     val life: LifeConfig = LifeConfig(),
     val update: UpdateConfig = UpdateConfig(),
+    val reminders: RemindersConfig = RemindersConfig(),
     val people: PeopleConfig = PeopleConfig(),
     val memory: MemoryConfig = MemoryConfig(),
     val spotify: SpotifyConfig = SpotifyConfig(),
@@ -74,6 +75,11 @@ data class PersonalityConfig(
     /** short, medium, detailed */
     val verbosity: String = "short",
     val extraInstructions: String = "",
+    /**
+     * Topical jokes woven into answers (about the subject, search results, weather...): "auto" (only in the
+     * descontraido/sarcastico/dramatico/alegre tones), "always" or "never".
+     */
+    val jokes: String = "auto",
     /** Max memories injected in the system prompt each turn. */
     val memoriesInPrompt: Int = 15,
 )
@@ -296,6 +302,12 @@ data class MeshPeer(
     val host: String,
     val port: Int,
     val lastSeen: Long = 0,
+)
+
+@Serializable
+data class RemindersConfig(
+    /** Let the AI rewrite each reminder as a fresh line in the configured tone (falls back to templates). */
+    val aiPhrases: Boolean = true,
 )
 
 /** Self-update from a `latest.json` manifest (see `./gradlew publishUpdate`). */

@@ -38,6 +38,8 @@ class ReminderScheduler(private val context: Context, private val dao: ReminderD
         escalateToPersonId: Long? = null,
         escalateAfterMinutes: Int = 0,
         animation: String = "",
+        phrase: String = "",
+        style: String = "",
     ): ReminderEntity {
         val entity = ReminderEntity(
             message = message,
@@ -51,6 +53,8 @@ class ReminderScheduler(private val context: Context, private val dao: ReminderD
             escalateToPersonId = escalateToPersonId,
             escalateAfterMinutes = escalateAfterMinutes,
             animation = animation,
+            phrase = phrase,
+            style = style,
         )
         val saved = entity.copy(id = dao.insert(entity))
         schedule(saved)

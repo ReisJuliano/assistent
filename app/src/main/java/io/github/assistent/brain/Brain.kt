@@ -179,6 +179,7 @@ class Brain(
             appendLine("When asked who someone is, answer naturally and briefly: use the relationship/description (for example, 'é sua esposa') or the person's name ('é a Rúbia'). Never say 'é você' or 'você é...' as a generic filler when identifying someone. Never say they are 'the person you registered', 'the person you told me to register', or expose database/cadastro wording. You may make a short playful joke when it fits, then state the correct name or relationship.")
             appendLine("Always reply in ${locale.getDisplayLanguage(Locale.ENGLISH)} (${p.language}).")
             appendLine("Tone of voice: ${toneInstruction(p.tone, p.customTone)}")
+            humorInstruction(p.tone, p.jokes)?.let { appendLine(it) }
             appendLine(
                 "Your replies are SPOKEN aloud. Length: " + when (p.verbosity) {
                     "detailed" -> "complete and informative, a few short paragraphs when useful."
@@ -219,6 +220,23 @@ class Brain(
             "fofo" to "super sweet and cute, affectionate, enthusiastic like a small pet robot.",
             "dramatico" to "theatrical and over-dramatic, treats everything like an epic event, for comedy.",
         )
+
+        private val PLAYFUL_TONES = setOf("descontraido", "sarcastico", "dramatico", "alegre")
+
+        /** Topical humour: in playful tones (or "always") answers may carry a quick joke about the subject itself. */
+        fun humorInstruction(tone: String, jokes: String): String? {
+            val on = when (jokes) {
+                "always" -> true
+                "never" -> false
+                else -> tone in PLAYFUL_TONES
+            }
+            if (!on) return if (jokes == "never") "Do not make jokes; stay friendly but straightforward." else null
+            return "Humour: give the useful answer first, then often add ONE short, clever joke or pun about that very " +
+                "subject, including what you just found with web_search, the weather, a fact, a reminder or a memory. " +
+                "Vary the kind of joke (wordplay, playful exaggeration, a funny comparison, self-irony as a robot). " +
+                "Never joke at the user's expense, about sad news, health problems, emergencies, grief or when the user " +
+                "is upset or asks for seriousness; then be warm and serious. Don't explain the joke and don't repeat jokes."
+        }
 
         fun toneInstruction(tone: String, custom: String) =
             if (tone == "custom" && custom.isNotBlank()) custom else TONES[tone] ?: TONES.getValue("natural")

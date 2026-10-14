@@ -162,6 +162,7 @@ class AppGraph(context: Context) {
     val runtime = AssistantRuntime(config, brain, speaker, listener, bargeIn, sleep, events, db.people(), scope, tools, http)
     init {
         alerts.runtime = runtime
+        runtime.reminderPhrases = io.github.assistent.core.ReminderPhrases(config, llm)
         reminders.onEscalate = runtime::onReminderEscalation
         messages.onDeliver = { person, message ->
             runtime.life.play(io.github.assistent.face.Scene.MESSAGE_DELIVERY)

@@ -303,6 +303,14 @@ private fun SettingsList(
                 if (cfg.personality.tone == "custom") {
                     Field("Descreva o tom (ex.: fala como um pirata)", cfg.personality.customTone, singleLine = false) { v -> up { it.copy(personality = it.personality.copy(customTone = v)) } }
                 }
+                Label("Piadinhas sobre o assunto")
+                Segmented(listOf("auto" to "Auto", "always" to "Sempre", "never" to "Nunca"), cfg.personality.jokes) { v ->
+                    up { it.copy(personality = it.personality.copy(jokes = v)) }
+                }
+                Hint("Auto: só nos tons descontraído, sarcástico, dramático e alegre. Nunca em assuntos sérios.")
+                SwitchRow("Lembretes com frases criativas", "A IA reescreve cada lembrete no tom escolhido (sem IA, usa frases prontas)", cfg.reminders.aiPhrases) { v ->
+                    up { it.copy(reminders = it.reminders.copy(aiPhrases = v)) }
+                }
                 Label("Tamanho das respostas")
                 Segmented(listOf("short" to "Curta", "medium" to "Média", "detailed" to "Detalhada"), cfg.personality.verbosity) { v ->
                     up { it.copy(personality = it.personality.copy(verbosity = v)) }

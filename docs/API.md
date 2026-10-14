@@ -52,8 +52,9 @@ curl -X PATCH http://IP:8765/api/v1/config -H "Authorization: Bearer $T" \
 | POST | `/memories` | `{"content":"...","tags":"casa","person":"Diogo"}` (`personId` também aceito) |
 | DELETE | `/memories/{id}` · `/memories` | |
 | GET | `/reminders?all=true` | |
-| POST | `/reminders` | `{"message":"Tomar remédio","datetime":"2026-10-14T08:00","kind":"alarm","repeat":"daily"}` ou `{"message":"...","in_minutes":10}` |
+| POST | `/reminders` | `{"message":"Tomar remédio","datetime":"2026-10-14T08:00","kind":"alarm","repeat":"daily"}` ou `{"message":"...","in_minutes":10}`. Opcionais: `type` (medicine/water/food/exercise), `phrase` (frase exata, `{n}` = nome), `style` (ex. "motivacional") |
 | DELETE | `/reminders/{id}` | |
+| GET | `/reminders/{id}/preview` | | Frase que ele falaria agora para o lembrete (não dispara) |
 | POST | `/reminders/{id}/ack` | | Confirma um lembrete que exige confirmação |
 
 ## Timers
