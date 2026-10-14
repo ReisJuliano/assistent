@@ -158,7 +158,27 @@ class Interactions(
     private val waveX = ArrayDeque<Pair<Long, Float>>()
 
     /** Centroid (0..1, screen-mirrored) of the moving area of the frame and how much moved (0..1). */
+    /** A real wave seen by [io.github.assistent.vision.HandWatcher]: open palm going side to side. */
+    fun onHandWave() {
+        if (!enabled || !awake) return
+        // Waves back every time; only a wave-back already on screen isn't restarted.
+        if (state.scene != Scene.WAVE_BACK.key) react(Scene.WAVE_BACK, if (state.bubble == null) "wave" else null, WAVE, 200)
+    }
+
+    /** Hand gestures: thumbs up/down, victory, "I love you". */
+    fun onHandGesture(name: String) {
+        if (!enabled || !awake || !ready("gesture_$name", 20_000)) return
+        when (name) {
+            "Thumb_Up" -> runtime.setEmotion(Emotion.JOY, 2_500)
+            "Thumb_Down" -> runtime.setEmotion(Emotion.SAD, 2_500)
+            "Victory" -> runtime.setEmotion(Emotion.HAPPY, 2_500)
+            "ILoveYou" -> runtime.setEmotion(Emotion.LOVE, 3_000)
+        }
+    }
+
     fun onMotionCentroid(x: Float, amount: Float) {
+        // With the hand model on, waves come from real hand tracking; pixel motion only caused false waves.
+        if (config.current.life.gestures) return
         if (!enabled || !awake || state.activity == Activity.SPEAKING || state.activity == Activity.LISTENING || state.activity == Activity.THINKING) {
             waveX.clear()
             return
@@ -328,7 +348,8 @@ class Interactions(
         android.util.Log.d("Interactions", "pet gesture accepted activity=${state.activity}")
         if (state.activity == Activity.SLEEPING) runtime.wake(greet = false)
         runtime.life.interruptForInteraction()
-        if (ready("pet", 8_000)) react(Scene.PURR, if (ready("pet_line", 60_000)) "pet" else null, PET, 800)
+        // Everyday affection: it reacts every time (a line too, unless one is already on screen).
+        react(Scene.PURR, if (state.bubble == null) "pet" else null, PET, 800)
     }
 
     fun onTickle() {
@@ -336,7 +357,7 @@ class Interactions(
         android.util.Log.d("Interactions", "tickle gesture accepted activity=${state.activity}")
         if (state.activity == Activity.SLEEPING) runtime.wake(greet = false)
         runtime.life.interruptForInteraction()
-        if (ready("tickle", 6_000)) react(Scene.GIGGLE, if (ready("tickle_line", 45_000)) "tickle" else null, TICKLE, 500)
+        react(Scene.GIGGLE, if (state.bubble == null) "tickle" else null, TICKLE, 500)
     }
 
     // ------------------------------------------------------------------ device sensors
@@ -394,7 +415,7 @@ class Interactions(
     }
 
     companion object {
-        private val WAVE = listOf("Oi! 👋", "Eaaae! 👋", "Olá, olá!", "Oi oi! Tudo bem?", "Tchauzinho… quer dizer, oi! 😄")
+        private val WAVE = listOf("Oi!", "Eaaae!", "Olá, olá!", "Oi oi! Tudo bem?", "Tchauzinho… quer dizer, oi!")
         private val DANCE = listOf("Essa música é boa demais! 🎶", "Solta o som! 🎧", "Não consigo parar de dançar!", "Que batida! 🕺")
         private val PET = listOf("Hmm… que gostoso 🥰", "Mais um pouquinho…", "Rrrr… 💙", "Carinho é bom demais.")
         private val TICKLE = listOf("Hihihi! Cócegas não! 🤭", "Para, para! Hahaha!", "Hihi, aí não!", "Ai, que cócegas!")

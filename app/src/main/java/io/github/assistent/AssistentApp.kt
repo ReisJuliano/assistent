@@ -231,6 +231,9 @@ class AppGraph(context: Context) {
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
     }
+    /** Hands on camera: waves and gestures (MediaPipe). */
+    val hands = io.github.assistent.vision.HandWatcher(context, config, http, scope)
+
     /** Bodies, objects and outfits of the day on camera. */
     val body = io.github.assistent.vision.BodyWatcher(context, config, http, scope)
     /** Who is around the house from voice and clothes (weak evidence, never the trusted identity). */
@@ -242,6 +245,8 @@ class AppGraph(context: Context) {
         rp.report = mesh::reportPresence
         body.onOutfitMatch = rp::onOutfit
         body.onObjects = interactions::onObjectsSeen
+        hands.onWave = interactions::onHandWave
+        hands.onGesture = interactions::onHandGesture
         ears.onSound = { kind, score ->
             interactions.onSound(kind, score)
             if (kind == "speech") rp.onSpeechHeard()

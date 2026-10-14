@@ -152,9 +152,10 @@ awake, not cleared by conversation):
 
 | Input | Detection | Reaction |
 |---|---|---|
-| Waving at the camera | motion-centroid x oscillating ≥3 times in 2 s with a face present (`FaceTracker.detectMotion` → `onMotionCentroid`) | `WAVE_BACK` + "Oi! 👋" |
+| Waving at the camera | MediaPipe gesture recognizer (`vision/HandWatcher.kt`, ~8 fps only while a face is present): open palm, raised, ≥2 side-to-side swings in 2.2 s (`WaveDetector`, unit tested). Answers **every** wave (no cooldown) | `WAVE_BACK` + "Oi!" |
+| Thumbs up/down, victory, "I love you" | same recognizer (`/vision/hands` tests an image: samples scored 0.73–0.91) | joy / sad / happy / love face |
 | Music | phone: `AudioManager.isMusicActive`; room: sustained sound + regular onset autocorrelation on the wake-word audio loop (`onAudioLevel`, 50 ms frames) | `DANCE` to the estimated BPM (`Life.danceBpm`) |
-| Slow strokes / fast scribbles on the face | drag gestures in `MainActivity` | `PURR` / `GIGGLE` |
+| Slow strokes / fast scribbles on the face | drag gestures in `MainActivity` | `PURR` / `GIGGLE`, every time (everyday affection has no cooldown) |
 | Shaking the phone | accelerometer peaks | `WAKE_DIZZY` + complaint |
 | Charger / low battery | `ACTION_POWER_CONNECTED` / `ACTION_BATTERY_LOW` | `CHARGE` / tired line |
 | Covering the camera | mean brightness < 14 for 1.2 s | `WHERE_ARE_YOU`, then `FOUND_YOU` when uncovered |

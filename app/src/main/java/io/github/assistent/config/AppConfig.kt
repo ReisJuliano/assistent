@@ -284,6 +284,9 @@ data class LifeConfig(
     val roomMusic: Boolean = true,
     /** Recognise sounds in the room (YAMNet on the phone): cat, dog, doorbell, sneeze, music vs speech... */
     val soundEvents: Boolean = true,
+    /** Hands on camera (MediaPipe): waving back, thumbs up... */
+    val gestures: Boolean = true,
+    val gestureModelUrl: String = "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
     val soundModelUrl: String = "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite",
     /** Lower camera/frame rates and lighter processing to keep the phone cool. */
     val powerSave: Boolean = true,

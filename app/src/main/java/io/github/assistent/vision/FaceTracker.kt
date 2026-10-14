@@ -51,7 +51,11 @@ class FaceTracker(
     private val wantsFrame: () -> Boolean = { false },
     /** Upright, downscaled frame (~1/s) and the tracked face box in 0..1, if any. */
     private val onFrame: (android.graphics.Bitmap, android.graphics.RectF?) -> Unit = { _, _ -> },
+    /** Hands need a faster, separate cadence (~8 fps) while someone is in front of the camera. */
+    private val wantsHands: () -> Boolean = { false },
+    private val onHandFrame: (android.graphics.Bitmap) -> Unit = {},
 ) {
+    private var lastHandFrame = 0L
     private var lastFrameOut = 0L
     private val barcodes by lazy { com.google.mlkit.vision.barcode.BarcodeScanning.getClient() }
     private var prevLuma: IntArray? = null
@@ -144,6 +148,10 @@ class FaceTracker(
         val media = proxy.image
         // Power save: ~4 fps awake, ~1 fps asleep (only motion matters then).
         val interval = when { !powerSave() -> 80L; sleeping() -> 350L; else -> 250L }
+        if (media != null && now - lastHandFrame >= 120 && wantsHands()) {
+            lastHandFrame = now
+            uprightFrame(proxy, proxy.imageInfo.rotationDegrees, 320)?.let(onHandFrame)
+        }
         if (media == null || now - lastFrame < interval) { proxy.close(); return }
         lastFrame = now
         val rotation = proxy.imageInfo.rotationDegrees
@@ -325,9 +333,9 @@ class FaceTracker(
 
     /** Upright, slightly padded square crop of the face for recognition. */
     /** The camera frame rotated upright and shrunk to at most 480 px (enough for object detection and colours). */
-    private fun uprightFrame(proxy: ImageProxy, rotation: Int): android.graphics.Bitmap? = runCatching {
+    private fun uprightFrame(proxy: ImageProxy, rotation: Int, maxSide: Int = 480): android.graphics.Bitmap? = runCatching {
         val raw = proxy.toBitmap()
-        val k = 480f / maxOf(raw.width, raw.height)
+        val k = maxSide.toFloat() / maxOf(raw.width, raw.height)
         val m = android.graphics.Matrix().apply { postRotate(rotation.toFloat()); if (k < 1f) postScale(k, k) }
         android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
     }.getOrNull()

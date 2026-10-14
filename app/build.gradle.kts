@@ -104,6 +104,8 @@ dependencies {
     implementation(libs.mlkit.barcode)
 
     implementation(libs.vosk.android)
+    // Hands and gestures (waving, thumbs up...) on the camera, on-device. Model downloaded at runtime.
+    implementation("com.google.mediapipe:tasks-vision:0.10.35")
     // Real ADB device protocol (network debugging) for Android TV control.
     implementation("dev.mobile:dadb:${libs.versions.dadb.get()}@jar") // jar only: Gradle mis-resolves it as an AAR { artifact { type = "aar" } }
     implementation(libs.jna) { artifact { type = "aar" } }

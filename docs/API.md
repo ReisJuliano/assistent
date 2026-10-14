@@ -184,6 +184,7 @@ Eventos: `wake`, `sleep`, `user_said`, `reply`, `reminder`, `emotion`, `face_see
 | GET | `/chatgpt` | | Status do login "Sign in with ChatGPT" |
 | POST | `/chatgpt/signin` | | Abre o login oficial do ChatGPT no navegador do aparelho |
 | POST | `/chatgpt/signout` | | Desconecta a conta ChatGPT deste aparelho |
+| POST | `/vision/hands` | imagem (JPEG/PNG) | Gesto da mão na imagem (MediaPipe): `Thumb_Up 0.73 palm=(x,y)` |
 | POST | `/vision/detect` | imagem (JPEG/PNG) no corpo | Objetos/pessoas/bichos que ele vê: `[{"label":"cat","score":0.7,"box":"x1,y1,x2,y2"}]` |
 | GET | `/operations` | | O que ele está fazendo agora: ferramentas em execução e recém-terminadas, com estado real |
 | POST | `/operations/cancel` | | Cancela todas as operações em andamento ("parar") |

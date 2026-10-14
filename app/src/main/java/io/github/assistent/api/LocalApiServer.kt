@@ -608,6 +608,12 @@ class LocalApiServer(private val g: AppGraph) {
                         put("suggestions", kotlinx.serialization.json.JsonArray(g.wakeWord.goodNames().map { kotlinx.serialization.json.JsonPrimitive(it) }))
                     })
                 })
+                // Hand gesture in an image (JPEG/PNG body): gesture name, score and palm position.
+                post("/vision/hands", guard {
+                    val bytes = call.receive<ByteArray>()
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("not an image")
+                    call.respond(buildJsonObject { put("result", g.hands.recognizeOnce(bmp) ?: "nenhuma mão") })
+                })
                 // What the robot hears in a WAV clip (YAMNet groups and scores).
                 post("/sounds/classify", guard {
                     val r = g.ears.classifyClip(io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>()))

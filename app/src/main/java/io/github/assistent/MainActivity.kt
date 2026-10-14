@@ -286,6 +286,11 @@ class MainActivity : ComponentActivity() {
                     powerSave = { graph.config.current.life.powerSave },
                     wantsFrame = { graph.config.current.let { it.people.outfits || (it.life.enabled && it.life.mimic) } },
                     onFrame = graph.body::onFrame,
+                    wantsHands = {
+                        graph.config.current.life.let { it.enabled && it.gestures } && graph.runtime.gaze.value.present &&
+                            graph.runtime.state.value.activity != io.github.assistent.core.Activity.SLEEPING
+                    },
+                    onHandFrame = graph.hands::onFrame,
                     sleeping = {
                         graph.runtime.state.value.activity == io.github.assistent.core.Activity.SLEEPING &&
                             System.currentTimeMillis() > graph.runtime.faceCheckUntil
