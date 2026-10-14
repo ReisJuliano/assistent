@@ -18,6 +18,8 @@ internal object TvAdbWire {
 }
 
 internal class TvAdbClient(private val host: String, private val port: Int) {
+    fun probe(): String = shell("getprop ro.product.model").ifBlank { error("TV returned no model") }
+
     fun shell(command: String): String {
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host, port), 1_500)
@@ -79,7 +81,14 @@ class TvControlTool(private val config: ConfigStore) : Tool {
             val output = TvAdbClient(device.host, device.adbPort.coerceIn(1, 65535)).shell(command)
             when (action) {
                 "status" -> if (output.isNotBlank()) "${device.name} online ($output)" else "${device.name} online"
-                else -> "${device.name}: $action sent"
+                "open_app" -> {
+                    val visible = TvAdbClient(device.host, device.adbPort.coerceIn(1, 65535))
+                        .shell("dumpsys activity activities")
+                        .contains(args.str("value")!!.trim())
+                    if (visible) "${device.name}: ${args.str("value")} open and verified"
+                    else "${device.name}: ADB accepted open_app, but the foreground app was not verified"
+                }
+                else -> "${device.name}: ADB accepted $action; final TV state was not verifiable"
             }
         }.getOrElse { "${device.name}: ADB failed: ${it.message}" }
     }

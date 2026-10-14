@@ -41,8 +41,9 @@ para Wake-on-LAN e ADB.
 
 Acoes Android TV: `status`, `home`, `back`, `up`, `down`, `left`, `right`,
 `enter`, `play`, `pause`, `next`, `previous`, `volume_up`, `volume_down`,
-`mute`, `power` e `open_app`. A resposta so informa sucesso depois que o
-comando ADB foi aceito pelo dispositivo.
+`mute`, `power` e `open_app`. `status` e `open_app` fazem verificacao posterior;
+os comandos de tecla informam explicitamente quando apenas o ADB aceitou o
+comando, sem inventar que a tela mudou.
 
 ## Configuração
 

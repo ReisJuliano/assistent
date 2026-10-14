@@ -6,6 +6,9 @@ import io.github.assistent.core.Emotion
 import io.github.assistent.voice.WakeWordEngine
 import io.github.assistent.tools.WakeOnLan
 import io.github.assistent.tools.TvAdbWire
+import io.github.assistent.tools.TvAdbClient
+import java.net.ServerSocket
+import java.util.concurrent.Executors
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -56,6 +59,27 @@ class CoreLogicTest {
 
     @Test fun androidTvAdbFramesServicesWithFourHexLength() {
         assertEquals("000bshell:input", TvAdbWire.frame("shell:input").decodeToString())
+    }
+
+    @Test fun androidTvAdbClientCompletesARealWireExchange() {
+        ServerSocket(0).use { server ->
+            val executor = Executors.newSingleThreadExecutor()
+            val future = executor.submit {
+                server.accept().use { socket ->
+                    val input = socket.getInputStream()
+                    val size = input.readNBytes(4).toString(Charsets.US_ASCII).toInt(16)
+                    assertEquals("shell:echo online", input.readNBytes(size).toString(Charsets.UTF_8))
+                    socket.getOutputStream().apply {
+                        write("OKAY".toByteArray())
+                        write("online\n".toByteArray())
+                        flush()
+                    }
+                }
+            }
+            assertEquals("online", TvAdbClient("127.0.0.1", server.localPort).shell("echo online"))
+            future.get()
+            executor.shutdownNow()
+        }
     }
 
     @Test fun emotionTagIsParsedAndStripped() {
