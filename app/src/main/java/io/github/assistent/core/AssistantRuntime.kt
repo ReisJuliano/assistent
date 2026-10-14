@@ -14,6 +14,7 @@ import io.github.assistent.tools.str
 import io.github.assistent.voice.Listener
 import io.github.assistent.voice.Speaker
 import io.github.assistent.voice.BargeInDetector
+import io.github.assistent.voice.SpeechPipeline
 import io.github.assistent.sleep.SleepTracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -58,10 +60,15 @@ class AssistantRuntime(
     @Volatile private var interruptRequested = false
     @Volatile var cameraBrightness: Float = 255f
     private val spokenReply = StringBuilder()
+    private val generatedReply = StringBuilder()
     private var currentReplyText = ""
     private var currentReplyEmotion = Emotion.NEUTRAL
     private var emotionJob: Job? = null
     private var bargeInJob: Job? = null
+    private var activeChatJob: Job? = null
+    private var speechPipeline: SpeechPipeline? = null
+    @Volatile private var interruptedThisTurn = false
+    @Volatile private var pendingInterruptText = ""
     private var waitingLineJob: Job? = null
     private var waitingLineActivity: Activity? = null
     @Volatile private var waitingLineStarted = false
@@ -198,24 +205,41 @@ class AssistantRuntime(
     }
 
     fun interruptSpeaking() {
-        if (state.value.activity == Activity.SPEAKING) {
-            interruptRequested = true
-            speaker.stop()
-            brain.noteInterrupted(currentReplyText, spokenReply.toString(), currentReplyEmotion)
-            setEmotion(Emotion.CONFUSED, 1_500)
-        } else {
-            speaker.stop()
-        }
+        interruptRequested = true
+        speechPipeline?.cancel()
+        speaker.stop()
+        activeChatJob?.cancel()
+        if (state.value.activity == Activity.SPEAKING) setEmotion(Emotion.CONFUSED, 1_500)
     }
 
     private fun startBargeIn() {
         bargeInJob?.cancel()
+        val mode = config.current.voice.bargeIn.lowercase()
+        if (mode == "off") return
         bargeInJob = scope.launch {
             if (bargeIn.awaitSpeech { speaker.player.level }) {
-                interruptSpeaking()
+                if (mode == "name") {
+                    interruptSpeaking()
+                    val heard = listener.listen(2_500, {}, {}).trim()
+                    if (isBargeCommand(heard)) pendingInterruptText = heard
+                    else pendingInterruptText = ""
+                } else {
+                    interruptSpeaking()
+                }
                 setActivity(Activity.LISTENING)
             }
         }
+    }
+
+    private fun isBargeCommand(text: String): Boolean {
+        val normalized = text.lowercase()
+            .replace(Regex("[^a-záéíóúãõç ]"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        if (normalized.isBlank()) return false
+        val stop = config.current.voice.bargeInStopWords.any { normalized.contains(it.lowercase()) }
+        if (!stop) return false
+        val name = config.current.personality.name.lowercase().trim()
+        return name.isBlank() || normalized.contains(name) || normalized.split(' ').size <= 2
     }
 
     private fun stopBargeIn() {
@@ -264,40 +288,61 @@ class AssistantRuntime(
         }
         var spokeDuringStreaming = false
         interruptRequested = false
+        interruptedThisTurn = false
         spokenReply.clear()
+        generatedReply.clear()
         currentReplyText = ""
         currentReplyEmotion = Emotion.NEUTRAL
         val reply = try {
             if (speak) {
                 val splitter = SentenceSplitter()
                 var startedSpeaking = false
-                brain.askStreaming(text, { if (!startedSpeaking) setActivity(it) }) { delta ->
-                    for (sentence in splitter.push(delta)) {
-                        if (interruptRequested) return@askStreaming
+                val pipeline = SpeechPipeline(
+                    scope = scope,
+                    speaker = speaker,
+                    capacity = config.current.tts.prefetch,
+                    onFirstChunk = {
                         if (!startedSpeaking) {
                             startedSpeaking = true
                             spokeDuringStreaming = true
                             setActivity(Activity.SPEAKING)
                             startBargeIn()
                         }
-                        speaker.speak(sentence)
-                        spokenReply.append(sentence).append(' ')
-                    }
-                }.also {
-                    currentReplyText = it.text
-                    currentReplyEmotion = it.emotion
-                    val tail = splitter.flush()
-                    if (tail.isNotBlank() && !interruptRequested) {
-                        if (!startedSpeaking) {
-                            startedSpeaking = true
-                            spokeDuringStreaming = true
-                            setActivity(Activity.SPEAKING)
-                            startBargeIn()
+                    },
+                    onHeard = { chunk -> spokenReply.append(chunk).append(' ') },
+                )
+                speechPipeline = pipeline
+                pipeline.start()
+                try {
+                    val generation = scope.async {
+                        brain.askStreaming(text, { if (!startedSpeaking) setActivity(it) }) { delta ->
+                            generatedReply.append(delta)
+                            for (sentence in splitter.push(delta)) {
+                                if (interruptRequested) return@askStreaming
+                                pipeline.submit(sentence)
+                            }
                         }
-                        speaker.speak(tail)
-                        spokenReply.append(tail).append(' ')
                     }
-                    if (interruptRequested) brain.noteInterrupted(it.text, spokenReply.toString(), it.emotion)
+                    activeChatJob = generation
+                    generation.await().also {
+                        currentReplyText = it.text
+                        currentReplyEmotion = it.emotion
+                        val tail = splitter.flush()
+                        if (tail.isNotBlank() && !interruptRequested) pipeline.submit(tail)
+                        pipeline.finish()
+                    }
+                } catch (e: CancellationException) {
+                    pipeline.cancel()
+                    if (interruptRequested) {
+                        brain.noteInterrupted(generatedReply.toString(), spokenReply.toString(), currentReplyEmotion)
+                        interruptedThisTurn = true
+                        activeChatJob = null
+                        setActivity(Activity.LISTENING)
+                        return Reply("", currentReplyEmotion, emptyList())
+                    }
+                    throw e
+                } finally {
+                    if (speechPipeline === pipeline) speechPipeline = null
                 }
             } else {
                 brain.ask(text) { setActivity(it) }
@@ -325,6 +370,7 @@ class AssistantRuntime(
         if (speak && !spokeDuringStreaming && !interruptRequested) say(reply.text) else setActivity(Activity.IDLE)
         scope.launch { brain.autoRemember(text, reply.text) }
         stopBargeIn()
+        activeChatJob = null
         if (sleepAfterReply) { sleepAfterReply = false; sleep() }
         return reply
     }
@@ -386,6 +432,16 @@ class AssistantRuntime(
         }
         while (text.isNotBlank()) {
             chat(text, speak = true)
+            if (interruptedThisTurn) {
+                interruptedThisTurn = false
+                if (state.value.activity == Activity.SLEEPING) break
+                val interrupted = pendingInterruptText.also { pendingInterruptText = "" }
+                text = interrupted.ifBlank { listen(7_000) }
+                if (text.isBlank()) break
+                if (isGoodNight(text)) { sleep(); return }
+                if (isStop(text)) { stopEverything(); return }
+                continue
+            }
             val follow = config.current.wake.followUpSeconds
             // With music on, the song would be taken as the next question: wait for the wake phrase instead.
             if (follow <= 0 || state.value.activity == Activity.SLEEPING || isMusicPlaying()) break
@@ -408,6 +464,8 @@ class AssistantRuntime(
     /** Immediate hard stop for speech, bubbles and life scenes. */
     fun stopEverything() {
         interruptRequested = true
+        speechPipeline?.cancel()
+        activeChatJob?.cancel()
         speaker.stop()
         stopBargeIn()
         bubbleJob?.cancel()

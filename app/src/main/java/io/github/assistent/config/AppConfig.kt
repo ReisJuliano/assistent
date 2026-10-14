@@ -15,6 +15,7 @@ data class AppConfig(
     val personality: PersonalityConfig = PersonalityConfig(),
     val stt: SttConfig = SttConfig(),
     val tts: TtsConfig = TtsConfig(),
+    val voice: VoiceConfig = VoiceConfig(),
     val wake: WakeConfig = WakeConfig(),
     val search: SearchConfig = SearchConfig(),
     val weather: WeatherConfig = WeatherConfig(),
@@ -99,6 +100,14 @@ data class SttConfig(
     val language: String = "pt",
     val silenceMs: Int = 1200,
     val maxSeconds: Int = 20,
+    val keepOnsetMs: Int = 2000,
+)
+
+@Serializable
+data class VoiceConfig(
+    /** off, name (default), or voice. */
+    val bargeIn: String = "name",
+    val bargeInStopWords: List<String> = listOf("para", "pare", "espera", "chega", "silêncio"),
 )
 
 @Serializable
@@ -122,6 +131,7 @@ data class TtsConfig(
     /** Android TTS only: lower pitch and slightly slower rhythm for a synthetic robot character. */
     val androidRobot: Boolean = false,
     val pitch: Float = 1.1f,
+    val prefetch: Int = 2,
 )
 
 @Serializable

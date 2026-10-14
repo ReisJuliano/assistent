@@ -23,9 +23,9 @@ import java.util.zip.ZipInputStream
 
 /**
  * Offline, always-on wake phrase detection with Vosk. No fixed hotword: any phrase from
- * `wake.phrases` (with the assistant's name and aliases) is matched with fuzzy matching,
+ * `wake.phrases` (with the configured assistant name and aliases) is matched with fuzzy and phonetic matching,
  * and whatever comes after the phrase in the same breath is returned as the command
- * ("ei Nexo, que horas são?" → "que horas são").
+ * ("ei {nome}, que horas são?" → "que horas são").
  */
 class WakeWordEngine(
     private val context: Context,
@@ -136,11 +136,8 @@ class WakeWordEngine(
             val phrases = phraseVariants()
             val threshold = config.current.wake.sensitivity.coerceIn(0.4f, 0.98f)
             val rec = Recognizer(m, 16000f)
-            // While sleeping, decode with a grammar restricted to the wake phrases: far more reliable for a name
-            // like "Nexo" than free transcription (which hears "anexo", "nexus"…).
-            val grammar = (phrases.map { "\"" + it.joinToString(" ") + "\"" } + "\"[unk]\"").joinToString(",", "[", "]")
-            val grammarRec = runCatching { Recognizer(m, 16000f, grammar) }.onFailure { Log.w(TAG, "grammar recognizer failed", it) }.getOrNull()
-            var usingGrammar = false
+            // Do not restrict decoding to a Vosk grammar while sleeping. Grammars can silently reject a custom
+            // name that is absent from the model vocabulary. Matching stays constrained to configured phrases.
             val minBuf = android.media.AudioRecord.getMinBufferSize(16000, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
             val mic = android.media.AudioRecord(
                 android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
@@ -185,16 +182,13 @@ class WakeWordEngine(
                     if (rms > maxOf(0.006f, noiseFloor * 2.5f)) voiceTail = 20 // ~1 s
                     if (voiceTail <= 0) continue
                     voiceTail--
-                    val wantGrammar = strict() && grammarRec != null
-                    if (wantGrammar != usingGrammar) { rec.reset(); grammarRec?.reset(); usingGrammar = wantGrammar }
-                    val r = if (usingGrammar) grammarRec!! else rec
+                    val r = rec
                     if (r.acceptWaveForm(buf, n)) {
                         val heard = field(r.result, "text")
-                        // In grammar mode the decoder can only output our phrases (or [unk]), so a looser match is safe.
                         // With music playing only a near-exact call counts (lyrics are full of almost-names).
-                        val need = when { music() -> 0.86f; usingGrammar -> 0.62f; else -> threshold.coerceAtMost(0.72f) }
-                        val remainder = if (heard.contains("[unk]") && usingGrammar) null else match(heard, phrases, need)
-                        if (heard.isNotBlank()) Log.d(TAG, "heard='$heard' grammar=$usingGrammar match=${remainder != null}")
+                        val need = if (music()) 0.86f else if (strict()) threshold.coerceAtLeast(0.78f) else threshold.coerceAtMost(0.72f)
+                        val remainder = match(heard, phrases, need)
+                        if (heard.isNotBlank()) Log.d(TAG, "heard='$heard' match=${remainder != null}")
                         // React before returning the completed recognition result. Waiting for the caller to
                         // resume after this branch made a valid wake phrase look unresponsive on the face.
                         if (!attention && remainder != null) {
@@ -211,8 +205,7 @@ class WakeWordEngine(
                         // Hand off as soon as the wake phrase is stable in a partial result. This releases
                         // AudioRecord before Listener opens the microphone for the actual command.
                         val partial = match(
-                            field(if (usingGrammar) grammarRec?.partialResult else rec.partialResult, "partial"),
-                            phrases, if (usingGrammar) 0.5f else threshold.coerceAtMost(0.68f),
+                            field(rec.partialResult, "partial"), phrases, threshold.coerceAtMost(0.68f),
                         )
                         if (partial != null) {
                             attention = true
@@ -228,7 +221,6 @@ class WakeWordEngine(
                 runCatching { mic.stop() }
                 mic.release()
                 rec.close()
-                grammarRec?.close()
             }
         }
 
@@ -242,7 +234,7 @@ class WakeWordEngine(
         return cfg.wake.phrases.flatMap { p ->
             if (p.contains("{name}")) names.map { p.replace("{name}", it) } else listOf(p)
         }.map { words(it) }.filter { it.isNotEmpty() }.distinct()
-            .sortedByDescending { it.size } // prefer longest match: "ei nexo" over "nexo"
+            .sortedByDescending { it.size } // prefer the longest configured phrase
     }
 
     companion object {
@@ -273,8 +265,22 @@ class WakeWordEngine(
         fun similarity(a: String, b: String): Float {
             if (a == b) return 1f
             val d = levenshtein(a, b)
-            return 1f - d.toFloat() / maxOf(a.length, b.length)
+            val spelling = 1f - d.toFloat() / maxOf(a.length, b.length)
+            val phonetic = if (phoneticKey(a) == phoneticKey(b)) 0.92f else 0f
+            return maxOf(spelling, phonetic)
         }
+
+        /** Small Portuguese-friendly fallback for common ASR confusions. */
+        private fun phoneticKey(value: String): String = words(value).joinToString("")
+            .replace("ph", "f")
+            .replace("qu", "k")
+            .replace("ch", "x")
+            .replace("ç", "s")
+            .replace("c", "k")
+            .replace("q", "k")
+            .replace("z", "s")
+            .replace("y", "i")
+            .replace(Regex("[aeiou]"), "a")
 
         private fun levenshtein(a: String, b: String): Int {
             var prev = IntArray(b.length + 1) { it }

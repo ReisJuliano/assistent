@@ -4,6 +4,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -28,7 +29,9 @@ class BargeInDetector {
             minBuf * 4,
         )
         val aec = if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(rec.audioSessionId) else null
+        val ns = if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(rec.audioSessionId) else null
         aec?.enabled = true
+        ns?.enabled = true
         val buf = ShortArray(rate / 20) // 50 ms
         var sustainedMs = 0
         var noise = 0.015f
@@ -49,6 +52,7 @@ class BargeInDetector {
             runCatching { rec.stop() }
             rec.release()
             aec?.release()
+            ns?.release()
         }
         detected
     }

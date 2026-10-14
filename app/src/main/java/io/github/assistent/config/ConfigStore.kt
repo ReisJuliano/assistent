@@ -67,10 +67,9 @@ class ConfigStore(dir: File) {
                 )
             }
             if (c.version < 3) {
-                // v3: harder to wake up by accident — no aliases that are common words, stricter matching, no room-music dancing.
+                // v3: harder to wake up by accident — stricter matching, no room-music dancing.
                 c = c.copy(
                     wake = c.wake.copy(
-                        nameAliases = c.wake.nameAliases.filterNot { it.lowercase() in setOf("anexo", "nexus", "nexa") },
                         sensitivity = maxOf(c.wake.sensitivity, 0.82f),
                     ),
                     life = c.life.copy(roomMusic = false),

@@ -458,6 +458,21 @@ private fun SettingsList(
                             }
                         }
                         SliderRow("Velocidade", cfg.tts.speed, 0.6f..1.6f) { v -> up { it.copy(tts = it.tts.copy(speed = v)) } }
+                        SliderRow("Frases preparadas", cfg.tts.prefetch.toFloat(), 2f..8f, format = { "${it.roundToInt()}" }) { v ->
+                            up { it.copy(tts = it.tts.copy(prefetch = v.roundToInt())) }
+                        }
+                    }
+                }
+                item {
+                    Section("Interrupção da fala") {
+                        Segmented(
+                            listOf("name" to "Pelo nome", "voice" to "Qualquer voz", "off" to "Desligada"),
+                            cfg.voice.bargeIn,
+                        ) { v -> up { it.copy(voice = it.voice.copy(bargeIn = v)) } }
+                        Hint("Pelo nome é o modo mais confiável: diga “${cfg.personality.name}, para” ou “espera”. Qualquer voz usa eco e pode ser mais sensível.")
+                        Field("Palavras para interromper", cfg.voice.bargeInStopWords.joinToString(", ")) { v ->
+                            up { it.copy(voice = it.voice.copy(bargeInStopWords = v.split(',').map(String::trim).filter(String::isNotEmpty))) }
+                        }
                     }
                 }
                 item {

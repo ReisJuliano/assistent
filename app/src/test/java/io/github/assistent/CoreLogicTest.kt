@@ -28,6 +28,11 @@ class CoreLogicTest {
         assertNull(WakeWordEngine.match("vamos almoçar mais tarde", phrases, 0.75f))
     }
 
+    @Test fun wakeMatchingDoesNotDependOnTheDefaultAssistantName() {
+        val custom = listOf("ei osvaldo", "osvaldo").map(WakeWordEngine::words)
+        assertEquals("acende a luz", WakeWordEngine.match("ei oswaldo acende a luz", custom, 0.75f))
+    }
+
     @Test fun emotionTagIsParsedAndStripped() {
         val (e, text) = Brain.parseEmotion("[joy] **Oba!** Vai fazer sol amanhã.")
         assertEquals(Emotion.JOY, e)

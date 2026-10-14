@@ -44,7 +44,7 @@ class Brain(
         if (full.isBlank() || spoken.length >= full.length) return
         interruptedReply = InterruptedReply(full, spoken, emotion)
         history += ChatMessage("assistant", spoken.ifBlank { "..." })
-        history += ChatMessage("system", "[interrompido pelo usuÃ¡rio depois de: '$spoken'; o resto planejado era: '${full.removePrefix(spoken).trim()}']")
+        history += ChatMessage("system", "[interrompido pelo usuário depois de: '$spoken'; o resto planejado era: '${full.removePrefix(spoken).trim()}']")
     }
 
     suspend fun autoRemember(userText: String, assistantText: String) {

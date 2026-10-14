@@ -29,7 +29,7 @@ data class VoiceMatch(val person: PersonEntity?, val score: Float)
 /**
  * On-device speaker recognition with sherpa-onnx (CAM++ speaker embeddings, model downloaded on first use).
  * Enrollment captures ~10 s of voiced audio from the always-on wake-word microphone loop (no mic conflicts);
- * identification runs on the audio of the wake phrase ("ei Nexo"), so the robot knows who called it.
+ * identification runs on the audio of the configured wake phrase, so the robot knows who called it.
  */
 class VoiceIdentityManager(
     private val context: Context,
