@@ -200,6 +200,11 @@ class LocalApiServer(private val g: AppGraph) {
                     })
                 })
                 get("/devices", guard { call.respond(g.config.current.lanDevices) })
+                post("/devices/discover", guard {
+                    val tool = g.tools.find("device") ?: error("device unavailable")
+                    val result = tool.execute(buildJsonObject { put("action", "discover_devices") })
+                    call.respond(buildJsonObject { put("result", result); put("devices", AppJson.encodeToJsonElement(g.config.current.lanDevices)) })
+                })
                 post("/devices/{id}/status", guard {
                     val id = call.parameters["id"] ?: error("missing device id")
                     val tool = g.tools.find("tv_control") ?: error("tv_control unavailable")

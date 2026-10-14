@@ -54,7 +54,7 @@ data class SpotifyConfig(
 data class LanDeviceConfig(
     val id: String = "",
     val name: String,
-    val mac: String,
+    val mac: String = "",
     val broadcast: String = "255.255.255.255",
     val port: Int = 9,
     val kind: String = "pc",

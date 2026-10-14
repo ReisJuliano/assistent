@@ -36,6 +36,7 @@ para Wake-on-LAN e ADB.
 | MÃ©todo | Rota | Corpo |
 |---|---|---|
 | GET | `/devices` | | Lista dispositivos cadastrados |
+| POST | `/devices/discover` | | Descobre TVs/ADB/Cast/UPnP automaticamente por Wi-Fi e salva os resultados |
 | POST | `/devices/{id}/status` | | Consulta estado por ADB |
 | POST | `/devices/{id}/control` | `{"action":"play"}` ou `{"action":"open_app","value":"com.google.android.youtube.tv"}` |
 

@@ -159,7 +159,7 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
     override val name = "device"
     override val description = "Control this phone and configured LAN devices: flashlight, volume, apps, battery, or Wake-on-LAN for a PC/TV."
     override val parameters = params {
-        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "wake_lan", "lan_status"))
+        string("action", "What to do", enum = listOf("flashlight_on", "flashlight_off", "set_volume", "open_url", "open_app", "battery", "discover_devices", "wake_lan", "lan_status"))
         string("value", "Volume 0-100, URL, app name, or configured LAN device name", required = false)
     }
 
@@ -181,10 +181,26 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
                 val bm = context.getSystemService(BatteryManager::class.java)
                 "battery ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%, charging=${bm.isCharging}"
             }
+            "discover_devices" -> discoverNow()
             "wake_lan" -> wakeLan(value)
             "lan_status" -> lanStatus(value)
             else -> "unknown action"
         }
+    }
+
+    suspend fun discoverNow(): String = withContext(Dispatchers.IO) {
+        val found = DeviceDiscovery.scan(context)
+        config.update { current ->
+            val discovered = found.map { item ->
+                val id = item.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "device_${item.host.replace('.', '_')}" }
+                io.github.assistent.config.LanDeviceConfig(
+                    id = id, name = item.name, mac = item.mac, host = item.host,
+                    kind = item.kind, adbPort = if (item.kind == "tv") item.port else 5555,
+                )
+            }
+            current.copy(lanDevices = (current.lanDevices + discovered).distinctBy { it.host.ifBlank { it.id } })
+        }
+        if (found.isEmpty()) "no network devices discovered" else found.joinToString("; ") { "${it.name} (${it.host}:${it.port}, ${it.kind})" }
     }
 
     private suspend fun wakeLan(value: String): String = withContext(Dispatchers.IO) {

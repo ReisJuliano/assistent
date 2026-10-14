@@ -117,6 +117,7 @@ class AppGraph(context: Context) {
     val phrases = PhrasePool(context.filesDir, config, llm, scope).also { Catchphrases.pool = it }
     val people = People(context, config, http, db.people(), scope).also { p -> scope.launch { p.migratePipeline() } }
     val registerFaceTool = RegisterFaceTool(people)
+    val deviceTool = DeviceTool(context, config)
 
     val tools = ToolRegistry(
         builtins = listOf(
@@ -154,7 +155,7 @@ class AppGraph(context: Context) {
             SleepReportTool(sleep),
             StartQuizTool(llm, config),
             RecordQuizScoreTool(quizzes, presence),
-            DeviceTool(context, config),
+            deviceTool,
             TvControlTool(config),
         ),
         config = config,
@@ -168,6 +169,10 @@ class AppGraph(context: Context) {
     val wakeWord = WakeWordEngine(context, config, http)
     val runtime = AssistantRuntime(config, brain, speaker, listener, bargeIn, sleep, events, db.people(), scope, tools, http)
     init {
+        scope.launch {
+            kotlinx.coroutines.delay(1_000)
+            deviceTool.discoverNow()
+        }
         alerts.runtime = runtime
         runtime.reminderPhrases = io.github.assistent.core.ReminderPhrases(config, llm)
         reminders.onEscalate = runtime::onReminderEscalation

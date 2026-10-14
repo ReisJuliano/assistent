@@ -8,6 +8,7 @@ import io.github.assistent.tools.WakeOnLan
 import io.github.assistent.tools.TvAdbWire
 import io.github.assistent.tools.TvAdbClient
 import io.github.assistent.brain.CapabilityPlanner
+import io.github.assistent.tools.DeviceDiscovery
 import java.net.ServerSocket
 import java.util.concurrent.Executors
 import kotlinx.serialization.json.Json
@@ -88,6 +89,14 @@ class CoreLogicTest {
         org.junit.Assert.assertTrue(prompt.contains("not only televisions"))
         org.junit.Assert.assertTrue(prompt.contains("confirmed by its tool result"))
         org.junit.Assert.assertTrue(prompt.contains("Independent steps may run in parallel"))
+    }
+
+    @Test fun ssdpHeadersAreCaseInsensitiveInTheDiscoveryParser() {
+        val method = DeviceDiscovery::class.java.getDeclaredMethod("parseHeaders", String::class.java).apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val headers = method.invoke(DeviceDiscovery, "HTTP/1.1 200 OK\r\nLOCATION: http://192.168.1.20:8008/desc.xml\r\nST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n\r\n") as Map<String, String>
+        assertEquals("http://192.168.1.20:8008/desc.xml", headers["location"])
+        assertEquals("urn:schemas-upnp-org:device:MediaRenderer:1", headers["st"])
     }
 
     @Test fun emotionTagIsParsedAndStripped() {
