@@ -268,6 +268,12 @@ data class LifeConfig(
 @Serializable
 data class PeopleConfig(
     val recognition: Boolean = true,
+    /** Recognise who is talking in the room (speaker ID on speech the microphone hears), not only on the wake phrase. */
+    val voiceInRoom: Boolean = true,
+    /** Remember each person's clothes of the day and guess them by their body when the face isn't visible. */
+    val outfits: Boolean = true,
+    /** Object/body detector (EfficientDet-Lite0, COCO), downloaded on first use. */
+    val objectModelUrl: String = "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/android/lite-model_efficientdet_lite0_detection_metadata_1.tflite",
     /** TFLite face-embedding model, downloaded on first use. */
     val modelUrl: String = "https://raw.githubusercontent.com/MCarlomagno/FaceRecognitionAuth/master/assets/mobilefacenet.tflite",
     /** Cosine similarity needed to say "that's you", 0..1. */

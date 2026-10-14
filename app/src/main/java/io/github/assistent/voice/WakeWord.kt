@@ -116,7 +116,8 @@ class WakeWordEngine(
         }
     }
 
-    private fun snapshot(seconds: Float): FloatArray {
+    /** The last [seconds] of microphone audio (16 kHz), from the always-on wake-word loop. */
+    fun snapshot(seconds: Float): FloatArray {
         val n = (16_000 * seconds).toInt().coerceAtMost(ring.size)
         return FloatArray(n) { ring[(ringPos - n + it + ring.size) % ring.size] }
     }

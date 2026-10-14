@@ -219,6 +219,26 @@ class AppGraph(context: Context) {
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
     }
+    /** Bodies, objects and outfits of the day on camera. */
+    val body = io.github.assistent.vision.BodyWatcher(context, config, http, scope)
+    /** Who is around the house from voice and clothes (weak evidence, never the trusted identity). */
+    val roomPresence = io.github.assistent.core.RoomPresence(
+        config, voiceIdentity, db.people(), presence, events, scope,
+        recentAudio = { s -> wakeWord.snapshot(s) },
+        musicPlaying = { interactions.musicPlaying },
+    ).also { rp ->
+        rp.report = mesh::reportPresence
+        body.onOutfitMatch = rp::onOutfit
+        body.onObjects = interactions::onObjectsSeen
+        ears.onSound = { kind, score ->
+            interactions.onSound(kind, score)
+            if (kind == "speech") rp.onSpeechHeard()
+        }
+        val known = greeter.onKnownPersonSeen
+        greeter.onKnownPersonSeen = { p -> known(p); body.onFaceRecognized(p) }
+        val unknown = greeter.onNoKnownPersonSeen
+        greeter.onNoKnownPersonSeen = { unknown(); body.onFaceGone() }
+    }
     val updater = io.github.assistent.update.Updater(context, config, http, scope).also { it.start() }
     val api = LocalApiServer(this)
 }

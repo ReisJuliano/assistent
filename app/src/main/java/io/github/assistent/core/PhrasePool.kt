@@ -180,6 +180,8 @@ class PhrasePool(
             "bored" to "o robô está entediado sem nada pra fazer",
             "anyone_there" to "o robô acordou sozinho, sem ninguém por perto, e pergunta se tem alguém ali ou fala sozinho",
             "quip_morning" to "comentário sozinho de manhã cedo, ainda com sono, querendo café",
+            "cat_seen" to "o robô viu um gato de verdade pela câmera; fala curta e fofa chamando o gatinho",
+            "dog_seen" to "o robô viu um cachorro de verdade pela câmera; fala curta e animada",
             "cat_heard" to "o robô ouviu um gato miar e pega um gatinho no colo; fala curta e fofa",
             "dog_heard" to "o robô ouviu um cachorro latir e faz carinho num cachorrinho; fala curta e animada",
             "door_heard" to "o robô ouviu a campainha ou alguém batendo na porta; avisa curto",

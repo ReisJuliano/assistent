@@ -97,6 +97,16 @@ class Interactions(
     /** True while music has been heard in the room recently: wake phrases need to be clearer then. */
     val musicPlaying get() = System.currentTimeMillis() - musicHeardAt < 20_000
 
+    /** Objects the camera sees (EfficientDet): pets get a reaction sometimes; everything feeds the mimicry. */
+    fun onObjectsSeen(objects: List<io.github.assistent.vision.SeenObject>) {
+        if (!enabled || objects.isEmpty()) return
+        val labels = objects.map { it.label }.toSet()
+        runtime.life.onObjects(labels)
+        if (state.activity == Activity.SLEEPING || !idle) return
+        if ("cat" in labels && ready("cat", 10 * 60_000) && Random.nextFloat() < 0.6f) react(Scene.CAT_CUDDLE, "cat_seen", CAT_SEEN, 1_000)
+        else if ("dog" in labels && ready("dog", 10 * 60_000) && Random.nextFloat() < 0.6f) react(Scene.DOG_PAT, "dog_seen", DOG_SEEN, 1_000)
+    }
+
     /** A sound recognised by [io.github.assistent.voice.SoundEars] (YAMNet). Reacts sometimes, never every time. */
     fun onSound(kind: String, score: Float) {
         if (!enabled) return
@@ -396,6 +406,8 @@ class Interactions(
         private val TOO_CLOSE = listOf("Opa, muito perto! 😳", "Uou, que zoom!", "Ei, espaço pessoal! 😅", "Tô vendo seu nariz por dentro!")
         private val SHY = listOf("Que foi? Tô com vergonha… 😳", "Para de me encarar, hihi.", "Tem alguma coisa no meu rosto?", "Assim eu fico sem graça…")
         private val BYE = listOf("Tchau, {n}! 👋", "Até mais, {n}!", "Volta logo, {n}!", "Vai com Deus, {n}!")
+        private val CAT_SEEN = listOf("Olha o gatinho! Vem cá.", "Oi, bichano!", "Que gatinho lindo.")
+        private val DOG_SEEN = listOf("Oi, cachorrinho!", "Olha o peludo aí!", "Quem é o bom garoto?")
         private val CAT_HEARD = listOf("Miau? Cadê o gatinho?", "Ouvi um miado! Vem cá, bichano.", "Gatinho no colo, que fofura.")
         private val DOG_HEARD = listOf("Au au? Oi, cachorrinho!", "Quem é o bom garoto?", "Ouvi um latido! Vem cá, peludo.")
         private val DOOR_HEARD = listOf("Tem alguém na porta!", "Opa, chegou visita?", "Ouvi a porta!")

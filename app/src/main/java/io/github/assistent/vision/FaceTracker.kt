@@ -47,7 +47,12 @@ class FaceTracker(
     private val onBrightness: (Float) -> Unit = {},
     private val powerSave: () -> Boolean = { true },
     private val sleeping: () -> Boolean = { false },
+    /** Whole-frame consumers (bodies/objects): want a frame now? */
+    private val wantsFrame: () -> Boolean = { false },
+    /** Upright, downscaled frame (~1/s) and the tracked face box in 0..1, if any. */
+    private val onFrame: (android.graphics.Bitmap, android.graphics.RectF?) -> Unit = { _, _ -> },
 ) {
+    private var lastFrameOut = 0L
     private val barcodes by lazy { com.google.mlkit.vision.barcode.BarcodeScanning.getClient() }
     private var prevLuma: IntArray? = null
     private var motionFrames = 0
@@ -183,6 +188,13 @@ class FaceTracker(
             } else if (now - lastSeen > 900) {
                 onGaze(Gaze())
             }
+            if (!sleeping() && wantsFrame() && now - lastFrameOut > 1_000) {
+                lastFrameOut = now
+                uprightFrame(proxy, rotation)?.let { frame ->
+                    val box = face?.boundingBox?.let { b -> android.graphics.RectF(b.left / w, b.top / h, b.right / w, b.bottom / h) }
+                    onFrame(frame, box)
+                }
+            }
             if (scanQr()) {
                 Tasks.await(barcodes.process(image)).firstNotNullOfOrNull { it.rawValue }?.let(onQr)
             }
@@ -312,6 +324,14 @@ class FaceTracker(
     }
 
     /** Upright, slightly padded square crop of the face for recognition. */
+    /** The camera frame rotated upright and shrunk to at most 480 px (enough for object detection and colours). */
+    private fun uprightFrame(proxy: ImageProxy, rotation: Int): android.graphics.Bitmap? = runCatching {
+        val raw = proxy.toBitmap()
+        val k = 480f / maxOf(raw.width, raw.height)
+        val m = android.graphics.Matrix().apply { postRotate(rotation.toFloat()); if (k < 1f) postScale(k, k) }
+        android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+    }.getOrNull()
+
     /** Only reasonably frontal, open-eyed, not tiny faces are worth embedding (bad frames poison the profile). */
     private fun goodForRecognition(face: com.google.mlkit.vision.face.Face): Boolean {
         if (kotlin.math.abs(face.headEulerAngleY) > 28f || kotlin.math.abs(face.headEulerAngleX) > 22f) return false

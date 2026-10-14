@@ -38,6 +38,14 @@ class PresenceTracker(
         _currentPerson.value = person
     }
 
+    /**
+     * Weak evidence that someone is around (voice in the room, outfit of the day): updates "last seen" for
+     * where-is questions, but never becomes the trusted current person.
+     */
+    fun onNoticed(person: PersonEntity, at: Long = System.currentTimeMillis()) {
+        seenAt[person.id] = at
+    }
+
     /** A camera frame with no trusted match must revoke visual identity immediately. */
     fun clear() {
         _currentPerson.value = null

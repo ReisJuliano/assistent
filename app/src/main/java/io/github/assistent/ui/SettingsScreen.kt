@@ -604,6 +604,12 @@ private fun PeopleSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> A
     Section("Pessoas") {
         Hint("Reconhecimento facial no aparelho. Quando alguém conhecido passa, ele puxa assunto pelo nome num balãozinho.")
         SwitchRow("Reconhecer rostos", checked = pc.recognition) { v -> up { it.copy(people = it.people.copy(recognition = v)) } }
+        SwitchRow("Reconhecer pela voz no ambiente", "Identifica quem está falando pela casa (tudo no aparelho, nada é gravado)", pc.voiceInRoom) { v ->
+            up { it.copy(people = it.people.copy(voiceInRoom = v)) }
+        }
+        SwitchRow("Reconhecer pela roupa do dia", "Guarda as cores da roupa quando vê o rosto e reconhece de longe ou de costas (palpite)", pc.outfits) { v ->
+            up { it.copy(people = it.people.copy(outfits = v)) }
+        }
         SwitchRow("Cumprimentar quem passa", checked = pc.greet) { v -> up { it.copy(people = it.people.copy(greet = v)) } }
         SwitchRow("Falar o cumprimento em voz alta", checked = pc.greetSpeak) { v -> up { it.copy(people = it.people.copy(greetSpeak = v)) } }
         SwitchRow("Puxar assunto com desconhecidos", checked = pc.greetUnknown) { v -> up { it.copy(people = it.people.copy(greetUnknown = v)) } }

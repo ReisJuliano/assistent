@@ -259,6 +259,7 @@ class MainActivity : ComponentActivity() {
                         if (!g.present) {
                             graph.presence.clear()
                             graph.greeter.onFaceGone()
+                            graph.body.onFaceGone()
                         }
                         graph.interactions.onGaze(g)
                     }, graph.runtime.life::onObjects,
@@ -278,6 +279,8 @@ class MainActivity : ComponentActivity() {
                         graph.interactions.onBrightness(brightness)
                     },
                     powerSave = { graph.config.current.life.powerSave },
+                    wantsFrame = { graph.config.current.let { it.people.outfits || (it.life.enabled && it.life.mimic) } },
+                    onFrame = graph.body::onFrame,
                     sleeping = {
                         graph.runtime.state.value.activity == io.github.assistent.core.Activity.SLEEPING &&
                             System.currentTimeMillis() > graph.runtime.faceCheckUntil

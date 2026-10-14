@@ -539,6 +539,20 @@ class LocalApiServer(private val g: AppGraph) {
                     val audio = io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>())
                     call.respond(buildJsonObject { put("result", g.voiceIdentity.enroll(personId, audio)) })
                 })
+                // What the robot sees in an image (JPEG/PNG body): COCO objects with boxes in 0..1.
+                post("/vision/detect", guard {
+                    val bytes = call.receive<ByteArray>()
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("not an image")
+                    val found = g.body.detectOnce(bmp)
+                    call.respond(kotlinx.serialization.json.buildJsonArray {
+                        found.forEach { o ->
+                            add(buildJsonObject {
+                                put("label", o.label); put("score", o.score)
+                                put("box", "%.2f,%.2f,%.2f,%.2f".format(o.box.left, o.box.top, o.box.right, o.box.bottom))
+                            })
+                        }
+                    })
+                })
                 // What the robot hears in a WAV clip (YAMNet groups and scores).
                 post("/sounds/classify", guard {
                     val r = g.ears.classifyClip(io.github.assistent.voice.Wav.decode16kMono(call.receive<ByteArray>()))

@@ -212,6 +212,18 @@ Other scenes cannot interrupt a light scene.
   called (`PresenceTracker`). Enrollment captures ~10 s of voiced audio from the same loop. WAV routes
   `/voice/enroll-audio` and `/voice/identify` allow testing: 7/7 correct on held-out sherpa sample speakers, unknowns ~0.36.
 
+### Presence around the house (`vision/BodyWatcher.kt`, `core/RoomPresence.kt`)
+
+- `FaceTracker` hands an upright 480 px frame ~1/s to `BodyWatcher`: EfficientDet-Lite0 with built-in NMS
+  (`people.objectModelUrl`, COCO labels read from the model's embedded zip) finds people, pets and objects
+  (`POST /vision/detect`; COCO samples: person 0.91, two cats). Objects feed mimicry and pet reactions.
+- Outfit of the day: when a face is recognised, the torso below it is stored as an HSV histogram; later a body
+  without a recognised face is compared (histogram intersection ≥ 0.72 with a 0.08 margin) → "noticed".
+- Voice in the room: YAMNet "speech" → speaker ID on the last 3 s of the wake-loop ring buffer (every ≥15 s, never
+  with music on).
+- These are weak signals: `PresenceTracker.onNoticed` updates last-seen, mesh presence and the `person_noticed`
+  event, but never `currentPerson` (the trusted, face-only identity used by the brain).
+
 ### Robot voice (`voice/RobotVoice.kt`)
 
 Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback comb (metallic) + optional bit-crush, presets

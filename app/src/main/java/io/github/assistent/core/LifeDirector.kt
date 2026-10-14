@@ -361,7 +361,7 @@ class LifeDirector(
         private val MIMIC = linkedMapOf(
             listOf("headphone", "headset", "earphone", "earbud") to Scene.MUSIC,
             listOf("joystick", "gamepad", "video game", "game controller") to Scene.GAMING,
-            listOf("coffee", "mug", "tea") to Scene.COFFEE,
+            listOf("coffee", "mug", "tea", "cup", "wine glass") to Scene.COFFEE,
             listOf("book", "newspaper", "magazine") to Scene.READING,
             listOf("glasses", "spectacles") to Scene.STUDYING,
             listOf("dog") to Scene.WALKING_DOG,
