@@ -186,6 +186,14 @@ Eventos: `wake`, `sleep`, `user_said`, `reply`, `reminder`, `emotion`, `face_see
 | POST | `/chatgpt/signout` | | Desconecta a conta ChatGPT deste aparelho |
 | POST | `/vision/hands` | imagem (JPEG/PNG) | Gesto da mão na imagem (MediaPipe): `Thumb_Up 0.73 palm=(x,y)` |
 | POST | `/vision/detect` | imagem (JPEG/PNG) no corpo | Objetos/pessoas/bichos que ele vê: `[{"label":"cat","score":0.7,"box":"x1,y1,x2,y2"}]` |
+| POST | `/network/scan` | | Varre a rede (mDNS, UPnP, portas, NetBIOS): TVs, PCs, Cast, com nome/MAC quando possível |
+| GET | `/network/found` | | Resultado da última varredura |
+| POST | `/devices/add` | `{"host":"192.168.1.20","name":"TV da Sala","room":"Sala"}` | Cadastra um aparelho encontrado |
+| POST | `/devices/{id}/wake` | | Wake-on-LAN e espera responder (confirmado) |
+| POST | `/devices/{id}/adb` | | Autoriza ADB na Android TV (aceite na tela da TV) e salva modelo e MAC |
+| GET | `/devices/{id}/online` | | Está respondendo agora? |
+| DELETE | `/devices/{id}` | | Remove |
+| POST | `/bluetooth/scan` | | Aparelhos Bluetooth por perto |
 | GET | `/spotify` | | Conta Spotify conectada? Redirect URI a cadastrar |
 | POST | `/spotify/signin` | | Abre o login oficial do Spotify no navegador do aparelho |
 | POST | `/spotify/signout` | | Desconecta a conta |

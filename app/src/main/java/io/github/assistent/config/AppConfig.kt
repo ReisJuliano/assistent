@@ -63,6 +63,10 @@ data class LanDeviceConfig(
     val host: String = "",
     val checkPort: Int = 0,
     val adbPort: Int = 5555,
+    val room: String = "",
+    /** UPnP DIAL Application-URL (launch YouTube/Netflix on smart TVs without ADB). */
+    val dialUrl: String = "",
+    val model: String = "",
 )
 
 /** OpenAI-compatible endpoint. Default target: CLIProxyAPI with ChatGPT (Codex) OAuth. */

@@ -35,6 +35,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material.icons.outlined.Speaker
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
@@ -623,6 +628,7 @@ private fun SettingsList(
                 item { PeopleSection(graph, cfg, up) }
             }
             SettingsTab.HOME -> {
+                item { HomeNetworkSection(graph, cfg) }
                 item { DevicesSection(graph, cfg, up) }
                 item { SpotifySection(graph, cfg, up) }
                 item { LanDevicesSection(cfg, up) }
@@ -1054,4 +1060,106 @@ private fun SpotifySection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> 
             if (graph.spotify.connected) TextButton(onClick = { graph.spotify.signOut() }) { Text("Desconectar") }
         }
     }
+}
+
+/** TVs and computers on the home network: scan, add, wake (Wake-on-LAN), authorise ADB, Bluetooth nearby. */
+@Composable
+private fun HomeNetworkSection(graph: AppGraph, cfg: AppConfig) {
+    val scope = rememberCoroutineScope()
+    val home = graph.home
+    val found by home.found.collectAsState()
+    val bt by home.bluetooth.collectAsState()
+    val progress by home.scanner.progress.collectAsState()
+    val btStatus by home.status.collectAsState()
+    var scanning by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf("") }
+    var online by remember { mutableStateOf(emptyMap<String, Boolean>()) }
+    val btPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) { scope.launch { home.scanBluetooth() } }
+    val saved = cfg.lanDevices
+    LaunchedEffect(saved.map { it.id + it.host }) {
+        online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { saved.associate { it.id to home.online(it) } }
+    }
+    Section("TVs e computadores") {
+        Hint("Procure na rede e adicione a TV e o PC. Com o MAC salvo ele liga os aparelhos pela rede (Wake-on-LAN) e confirma quando responderem. Android TV: ative a depuração por rede (Opções do desenvolvedor) e toque em Autorizar.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(enabled = !scanning, onClick = {
+                scanning = true
+                scope.launch { runCatching { home.scan() }; scanning = false }
+            }) { Text(if (scanning) "Procurando…" else "Procurar na rede") }
+            FilledTonalButton(onClick = {
+                if (home.canScanBluetooth()) scope.launch { home.scanBluetooth() } else btPermission.launch(home.bluetoothPermissions())
+            }) { Text("Procurar Bluetooth") }
+        }
+        if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (progress.isNotBlank()) Hint(progress)
+        if (saved.isNotEmpty()) {
+            Label("Cadastrados")
+            saved.forEach { d ->
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(deviceIcon(d.kind), null)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(d.name, style = MaterialTheme.typography.titleSmall)
+                            Hint("${d.host}${if (d.room.isNotBlank()) " · ${d.room}" else ""}${if (d.model.isNotBlank()) " · ${d.model}" else ""}")
+                        }
+                        Text(if (online[d.id] == true) "online" else "offline", style = MaterialTheme.typography.labelMedium,
+                            color = if (online[d.id] == true) Accent else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Field("MAC (para ligar pela rede)", d.mac) { v -> home.update(d.id) { it.copy(mac = v.trim()) } }
+                    Field("Cômodo", d.room) { v -> home.update(d.id) { it.copy(room = v.trim()) } }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = { result = "Ligando ${d.name}…"; scope.launch { result = home.wake(d) } }) { Text("Ligar") }
+                        if (d.kind == "tv") {
+                            TextButton(onClick = { result = "Conectando… confira a tela da TV"; scope.launch { result = home.authorizeAdb(d) } }) { Text("Autorizar TV") }
+                            TextButton(onClick = {
+                                scope.launch { result = graph.tvTool.execute(kotlinx.serialization.json.JsonObject(mapOf("action" to kotlinx.serialization.json.JsonPrimitive("status"), "device" to kotlinx.serialization.json.JsonPrimitive(d.id)))) }
+                            }) { Text("Testar") }
+                            TextButton(onClick = {
+                                scope.launch { result = graph.tvTool.execute(kotlinx.serialization.json.JsonObject(mapOf("action" to kotlinx.serialization.json.JsonPrimitive("power_off"), "device" to kotlinx.serialization.json.JsonPrimitive(d.id)))) }
+                            }) { Text("Desligar") }
+                        }
+                        TextButton(onClick = { home.remove(d.id) }) { Text("Remover") }
+                    }
+                }
+            }
+        }
+        if (result.isNotBlank()) Hint(result)
+        val unsaved = found.filter { f -> saved.none { it.host == f.host || (f.mac.isNotBlank() && it.mac.equals(f.mac, true)) } }
+        if (unsaved.isNotEmpty()) {
+            Label("Encontrados na rede")
+            unsaved.forEach { f ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(deviceIcon(f.kind), null)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(f.name, style = MaterialTheme.typography.bodyMedium)
+                        Hint("${f.host}${if (f.mac.isNotBlank()) " · ${f.mac}" else ""}${if (f.vendor.isNotBlank()) " · ${f.vendor} ${f.model}" else ""}")
+                    }
+                    TextButton(onClick = { home.add(f) }) { Text("Adicionar") }
+                }
+            }
+        }
+        if (bt.isNotEmpty() || btStatus.isNotBlank()) {
+            Label("Bluetooth por perto")
+            if (btStatus.isNotBlank()) Hint(btStatus)
+            bt.forEach { b ->
+                Text("${b.name} · ${b.type}${if (b.bonded) " · pareado" else ""}", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+private fun deviceIcon(kind: String) = when (kind) {
+    "tv", "cast" -> Icons.Outlined.Tv
+    "pc" -> Icons.Outlined.Computer
+    "speaker" -> Icons.Outlined.Speaker
+    "printer" -> Icons.Outlined.Print
+    else -> Icons.Outlined.Devices
 }

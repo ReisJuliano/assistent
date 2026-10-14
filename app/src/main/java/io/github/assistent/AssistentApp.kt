@@ -116,7 +116,10 @@ class AppGraph(context: Context) {
     val phrases = PhrasePool(context.filesDir, config, llm, scope).also { Catchphrases.pool = it }
     val people = People(context, config, http, db.people(), scope).also { p -> scope.launch { p.migratePipeline() } }
     val registerFaceTool = RegisterFaceTool(people)
-    val deviceTool = DeviceTool(context, config)
+    /** TVs/PCs on the network: scan, Wake-on-LAN, ADB, DIAL, Bluetooth. */
+    val home = io.github.assistent.tools.HomeDevices(context, config, http, io.github.assistent.tools.AdbRemote(context))
+    val deviceTool = DeviceTool(context, config).also { it.home = home }
+    val tvTool = TvControlTool(context, config, http, home)
 
     /** The owner's Spotify account (PKCE login, private tokens). */
     val spotify = io.github.assistent.tools.SpotifyAuth(context, config, http, scope)
@@ -155,7 +158,7 @@ class AppGraph(context: Context) {
 
             RecordQuizScoreTool(quizzes, presence),
             deviceTool,
-            TvControlTool(context, config),
+            tvTool,
         ),
         config = config,
         http = http,
@@ -180,7 +183,30 @@ class AppGraph(context: Context) {
             runtime.life.play(io.github.assistent.face.Scene.MESSAGE_DELIVERY)
             runtime.showBubble("${person.name}, recado: ${message.text}", speak = true, emotion = io.github.assistent.core.Emotion.HAPPY)
         }
-        timers.onDone = { timer ->
+        // "Turn the TV off in 30 minutes" = a named timer that switches it off when it ends (survives restarts).
+        tvTool.sleepTimer = { name, minutes ->
+            timers.create("Desligar $name", minutes * 60_000L)
+            "$name desliga em $minutes min"
+        }
+        tvTool.cancelSleepTimer = { name ->
+            val list = timers.list().filter { it.label == "Desligar $name" }
+            list.forEach { timers.cancel(it.id) }
+            if (list.isEmpty()) "não havia timer para desligar $name" else "timer de desligar $name cancelado"
+        }
+        val tvTimerDone: (io.github.assistent.data.TimerEntity) -> Boolean = { timer ->
+            if (timer.label.startsWith("Desligar ")) {
+                scope.launch {
+                    val result = tvTool.execute(kotlinx.serialization.json.buildJsonObject {
+                        put("action", kotlinx.serialization.json.JsonPrimitive("power_off"))
+                        put("device", kotlinx.serialization.json.JsonPrimitive(timer.label.removePrefix("Desligar ")))
+                    })
+                    events.emit("tv_sleep_timer", kotlinx.serialization.json.JsonPrimitive(result))
+                }
+                true
+            } else false
+        }
+        timers.onDone = onDone@{ timer ->
+            if (tvTimerDone(timer)) return@onDone
             runtime.wake(greet = false)
             runtime.life.play(io.github.assistent.face.Scene.TIMER_DONE)
             val text = "O ${timer.label} ta pronto!"

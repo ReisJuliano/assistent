@@ -50,6 +50,24 @@ class AdbFailure(message: String) : Exception(message)
 data class TvState(val awake: Boolean?, val foreground: String, val playback: String)
 
 internal object TvProbe {
+    /** Media stream volume (current, max) from `dumpsys audio`, or null when the TV doesn't say. */
+    fun mediaVolume(remote: AdbRemote, d: Dadb): Pair<Int, Int>? {
+        val dump = remote.shell(d, "dumpsys audio | grep -A12 '^- STREAM_MUSIC' | grep -E 'Max:|Current:'")
+        val max = Regex("Max:\\s*(\\d+)").find(dump)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        val cur = Regex("Current:[^\\d]*\\d+ \\([a-z_ ]+\\): (\\d+)").find(dump)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        return cur to max
+    }
+
+    /** MAC of the interface that carries [host] (eth0 for wired TVs), from `ip`: what Wake-on-LAN needs. */
+    fun macFor(remote: AdbRemote, d: Dadb, host: String): String? {
+        val addrs = remote.shell(d, "ip -o -4 addr show")
+        val iface = addrs.lines().firstOrNull { it.contains(" $host/") }?.trim()?.split(Regex("\\s+"))?.getOrNull(1)
+        val links = remote.shell(d, "ip -o link")
+        fun macOf(name: String) = links.lines().firstOrNull { it.contains(" $name:") }
+            ?.let { Regex("link/ether ([0-9a-f:]{17})").find(it)?.groupValues?.get(1) }
+        return listOfNotNull(iface?.let(::macOf), macOf("eth0"), macOf("wlan0")).firstOrNull { it != "00:00:00:00:00:00" }
+    }
+
     fun state(remote: AdbRemote, d: Dadb): TvState {
         val power = remote.shell(d, "dumpsys power | grep -m1 mWakefulness=")
         val fg = remote.shell(d, "dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity'")
@@ -71,17 +89,28 @@ internal object TvProbe {
  * Android TV control through real ADB. Every action is confirmed by reading the TV state back (power, foreground app,
  * media session); when the TV can't confirm, the result says so instead of claiming success.
  */
-class TvControlTool(private val context: Context, private val config: ConfigStore, private val remote: AdbRemote = AdbRemote(context)) : Tool {
+class TvControlTool(
+    private val context: Context,
+    private val config: ConfigStore,
+    private val http: okhttp3.OkHttpClient,
+    private val devices: HomeDevices,
+) : Tool {
+    private val remote = devices.adb
+    /** Set by the app graph: schedule / cancel "turn this TV off in N minutes" (survives restarts, via timers). */
+    var sleepTimer: (suspend (String, Int) -> String)? = null
+    var cancelSleepTimer: (suspend (String) -> String)? = null
     override val name = "tv_control"
     override val description = "Control an Android TV on the network through ADB and report the REAL result (verified). " +
-        "Actions: status, power_on, power_off, home, back, up, down, left, right, enter, play, pause, play_pause, next, previous, " +
-        "rewind, fast_forward, volume_up, volume_down, mute, open_app (value = app name like youtube, netflix, plex, jellyfin, " +
-        "globoplay, prime video, disney, spotify), search (value = what to look for, app = where), type_text."
+        "Actions: status, now_playing, power_on, power_off, sleep_timer (value = minutes), cancel_sleep_timer, home, back, up, " +
+        "down, left, right, enter, play, pause, play_pause, next (next video/episode), previous, rewind, fast_forward, " +
+        "seek (value = seconds, negative = back), volume_up, volume_down, volume_set (value 0-100), mute, open_app (value = app " +
+        "name: youtube, netflix, plex, jellyfin, globoplay, prime video, disney, spotify), play_youtube (value = what to watch: " +
+        "plays the first YouTube result), search (value, app), play_url (value = link), notify (value = message on the TV screen), type_text."
     override val activity = io.github.assistent.core.Activity.SEARCHING
     override val parameters = params {
         string("action", "Action", enum = ACTIONS)
         string("device", "TV name or id; empty = the only/nearest TV", required = false)
-        string("value", "App name, search text or text to type", required = false)
+        string("value", "App, search text, minutes, seconds, volume, link or message (see action)", required = false)
         string("app", "For search: youtube, netflix, prime video, plex, jellyfin, globoplay, spotify", required = false)
     }
 
@@ -90,13 +119,24 @@ class TvControlTool(private val context: Context, private val config: ConfigStor
         if (tv.host.isBlank()) return "${tv.name}: sem IP configurado"
         val action = args.str("action")?.lowercase().orEmpty()
         val port = tv.adbPort.coerceIn(1, 65535)
+        val value = args.str("value").orEmpty()
+        when (action) {
+            "sleep_timer" -> return sleepTimer?.invoke(tv.name, value.filter(Char::isDigit).toIntOrNull() ?: 30) ?: "timer indisponível"
+            "cancel_sleep_timer" -> return cancelSleepTimer?.invoke(tv.name) ?: "timer indisponível"
+        }
+        // YouTube by name: find the first video before talking to the TV (needs internet, not the TV).
+        val youtubeId = if (action == "play_youtube") (HomeDevices.youtubeFirstVideo(http, value) ?: return "não achei vídeo no YouTube para \"$value\"") else null
         return try {
             when (action) {
                 "power_on" -> powerOn(tv, port)
-                else -> remote.session(tv.host, port) { d -> run(d, tv, action, args) }
+                else -> remote.session(tv.host, port) { d -> run(d, tv, action, args, youtubeId) }
             }
         } catch (e: AdbFailure) {
-            "${tv.name}: FALHOU - ${e.message}"
+            // Smart TVs without ADB (Samsung, LG, Chromecast…): YouTube/Netflix through DIAL.
+            if (tv.dialUrl.isNotBlank() && (action == "play_youtube" || action == "open_app" && (value.contains("youtube", true) || value.contains("netflix", true)))) {
+                if (action == "play_youtube") devices.dial(tv, "YouTube", "v=$youtubeId")
+                else devices.dial(tv, if (value.contains("netflix", true)) "Netflix" else "YouTube")
+            } else "${tv.name}: FALHOU - ${e.message}"
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -104,7 +144,7 @@ class TvControlTool(private val context: Context, private val config: ConfigStor
         }
     }
 
-    private fun run(d: Dadb, tv: LanDeviceConfig, action: String, args: JsonObject): String {
+    private fun run(d: Dadb, tv: LanDeviceConfig, action: String, args: JsonObject, youtubeId: String? = null): String {
         fun key(code: Int) = remote.shell(d, "input keyevent $code")
         fun state() = TvProbe.state(remote, d)
         return when (action) {
@@ -134,6 +174,55 @@ class TvControlTool(private val context: Context, private val config: ConfigStor
                 if (waitFor { state().foreground == pkg }) "${tv.name}: buscando \"$q\" no $app (app na tela, confirmado)"
                 else "${tv.name}: pedi a busca de \"$q\" no $app, mas não confirmei que o app abriu"
             }
+            "now_playing" -> {
+                val s = state()
+                val meta = remote.shell(d, "dumpsys media_session | grep -m2 'description='")
+                val title = Regex("description=([^,\n]+)(?:, ([^,\n]+))?").find(meta)?.let { m ->
+                    listOfNotNull(m.groupValues[1].trim().takeIf { it != "null" }, m.groupValues.getOrNull(2)?.trim()?.takeIf { it.isNotBlank() && it != "null" })
+                        .joinToString(" - ")
+                }.orEmpty()
+                "${tv.name}: ${title.ifBlank { "nada identificado" }} (${s.playback}) no app ${s.foreground.ifBlank { "?" }}"
+            }
+            "volume_set" -> {
+                // Volume keys work on every Android TV (also the TV's own volume over HDMI-CEC); read back the media stream.
+                val pct = args.str("value")?.filter(Char::isDigit)?.toIntOrNull()?.coerceIn(0, 100) ?: return "volume_set precisa de 0 a 100"
+                val (cur, max) = TvProbe.mediaVolume(remote, d) ?: (null to 15)
+                val target = (pct * max + 50) / 100
+                val steps = if (cur != null) target - cur else 0
+                if (cur == null) {
+                    // Unknown start: go to zero, then up.
+                    repeat(max) { key(25) }
+                    repeat(target) { key(24) }
+                } else repeat(kotlin.math.abs(steps)) { key(if (steps > 0) 24 else 25) }
+                val now = TvProbe.mediaVolume(remote, d)?.first
+                if (now == target) "${tv.name}: volume em $pct% (confirmado)" else "${tv.name}: ajustei o volume para ~$pct% (a TV informa ${now ?: "?"} de $max; sem confirmação)"
+            }
+            "seek" -> {
+                val sec = args.str("value")?.replace(Regex("[^-0-9]"), "")?.toIntOrNull() ?: 10
+                repeat((kotlin.math.abs(sec) / 10).coerceIn(1, 30)) { key(if (sec >= 0) 90 else 89); Thread.sleep(120) }
+                "${tv.name}: ${if (sec >= 0) "avancei" else "voltei"} ${kotlin.math.abs(sec)} s (pelas teclas de avanço; o app decide o passo)"
+            }
+            "play_youtube" -> {
+                val pkg = resolveApp(d, "youtube") ?: return "${tv.name}: YouTube não está instalado"
+                // vnd.youtube: is handled by the YouTube app on phones and TVs; the https link is the fallback.
+                remote.shell(d, "am start -a android.intent.action.VIEW -d 'vnd.youtube:$youtubeId'")
+                if (!waitFor(5) { state().foreground.contains("youtube") }) remote.shell(d, "am start -a android.intent.action.VIEW -d 'https://www.youtube.com/watch?v=$youtubeId' $pkg")
+                when {
+                    waitFor(14) { state().playback == "playing" } -> "${tv.name}: tocando no YouTube (confirmado) https://youtu.be/$youtubeId"
+                    state().foreground == pkg -> "${tv.name}: YouTube aberto no vídeo https://youtu.be/$youtubeId (reprodução sem confirmação)"
+                    else -> "${tv.name}: pedi o vídeo, mas o YouTube não apareceu na tela (sem confirmação)"
+                }
+            }
+            "play_url" -> {
+                val url = args.str("value").orEmpty().takeIf { it.startsWith("http") } ?: return "play_url precisa de um link http"
+                remote.shell(d, "am start -a android.intent.action.VIEW -d '${url.replace("'", "")}'")
+                if (waitFor { state().foreground.isNotBlank() }) "${tv.name}: link aberto (app ${state().foreground})" else "${tv.name}: link enviado (sem confirmação)"
+            }
+            "notify" -> {
+                val msg = args.str("value").orEmpty().replace("'", "").ifBlank { return "notify precisa da mensagem" }
+                val out = remote.shell(d, "cmd notification post -S bigtext -t 'Robô' assistent '$msg'")
+                if (out.contains("rror") || out.contains("Unknown")) "${tv.name}: a TV não aceitou a notificação ($out)" else "${tv.name}: mensagem mostrada na TV"
+            }
             "type_text" -> {
                 val text = args.str("value").orEmpty().replace(" ", "%s").replace(Regex("[\"'`\\\\$]"), "")
                 remote.shell(d, "input text \"$text\"")
@@ -159,11 +248,12 @@ class TvControlTool(private val context: Context, private val config: ConfigStor
     private suspend fun powerOn(tv: LanDeviceConfig, port: Int): String {
         val reachable = runCatching { remote.session(tv.host, port) { true } }.getOrDefault(false)
         if (!reachable) {
-            val mac = WakeOnLan.parseMac(tv.mac) ?: return "${tv.name}: FALHOU - TV não responde e não tem MAC para Wake-on-LAN"
-            withContext(Dispatchers.IO) { WakeOnLan.send(mac, tv.broadcast, tv.port) }
+            // Deep sleep / off: Wake-on-LAN (to every broadcast form, several times) and wait until it answers.
+            val woke = devices.wake(tv)
+            if (woke.startsWith("FALHOU") || woke.contains("sem confirmação")) return "${tv.name}: $woke"
             var up = false
-            repeat(12) { if (!up) { delay(2_000); up = runCatching { remote.session(tv.host, port) { true } }.getOrDefault(false) } }
-            if (!up) return "${tv.name}: Wake-on-LAN enviado, mas a TV não ficou online em 24 s"
+            repeat(10) { if (!up) { delay(1_500); up = runCatching { remote.session(tv.host, port) { true } }.getOrDefault(false) } }
+            if (!up) return "${tv.name}: acordou na rede, mas o ADB não respondeu (autorize a depuração na TV)"
         }
         return remote.session(tv.host, port) { d ->
             if (TvProbe.state(remote, d).awake == true) return@session "${tv.name}: já estava ligada"
@@ -212,9 +302,9 @@ class TvControlTool(private val context: Context, private val config: ConfigStor
     companion object {
         private val PACKAGE = Regex("[a-z0-9_]+(\\.[a-z0-9_]+)+")
         private val ACTIONS = listOf(
-            "status", "power_on", "power_off", "home", "back", "up", "down", "left", "right", "enter",
-            "play", "pause", "play_pause", "next", "previous", "rewind", "fast_forward",
-            "volume_up", "volume_down", "mute", "open_app", "search", "type_text",
+            "status", "now_playing", "power_on", "power_off", "sleep_timer", "cancel_sleep_timer", "home", "back", "up", "down",
+            "left", "right", "enter", "play", "pause", "play_pause", "next", "previous", "rewind", "fast_forward", "seek",
+            "volume_up", "volume_down", "volume_set", "mute", "open_app", "play_youtube", "search", "play_url", "notify", "type_text",
         )
         private val KEYS = mapOf(
             "home" to 3, "back" to 4, "up" to 19, "down" to 20, "left" to 21, "right" to 22, "enter" to 66,

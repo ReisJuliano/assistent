@@ -156,6 +156,8 @@ internal fun fmt(epochMs: Long): String = java.time.Instant.ofEpochMilli(epochMs
 // ---------------------------------------------------------------- device
 
 class DeviceTool(private val context: Context, private val config: io.github.assistent.config.ConfigStore) : Tool {
+    /** Set by the app graph: full network scan and verified Wake-on-LAN. */
+    var home: HomeDevices? = null
     override val name = "device"
     override val description = "Control this phone and configured LAN devices: flashlight, volume, apps, battery, or Wake-on-LAN for a PC/TV."
     override val parameters = params {
@@ -181,8 +183,13 @@ class DeviceTool(private val context: Context, private val config: io.github.ass
                 val bm = context.getSystemService(BatteryManager::class.java)
                 "battery ${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%, charging=${bm.isCharging}"
             }
-            "discover_devices" -> discoverNow()
-            "wake_lan" -> wakeLan(value)
+            "discover_devices" -> home?.let { h ->
+                val list = h.scan()
+                if (list.isEmpty()) "nenhum aparelho encontrado na rede"
+                else list.joinToString("; ") { "${it.name} (${it.kind}, ${it.host}${if (it.mac.isNotBlank()) ", MAC ${it.mac}" else ""})" } +
+                    ". Para controlar, adicione em Configurações → Casa → TVs e computadores."
+            } ?: discoverNow()
+            "wake_lan" -> home?.let { h -> h.find(value)?.let { h.wake(it) } ?: "aparelho '$value' não cadastrado" } ?: wakeLan(value)
             "lan_status" -> lanStatus(value)
             else -> "unknown action"
         }

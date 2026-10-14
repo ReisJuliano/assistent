@@ -200,11 +200,33 @@ class LocalApiServer(private val g: AppGraph) {
                     })
                 })
                 get("/devices", guard { call.respond(g.config.current.lanDevices) })
-                post("/devices/discover", guard {
-                    val tool = g.tools.find("device") ?: error("device unavailable")
-                    val result = tool.execute(buildJsonObject { put("action", "discover_devices") })
-                    call.respond(buildJsonObject { put("result", result); put("devices", AppJson.encodeToJsonElement(g.config.current.lanDevices)) })
+                post("/devices/discover", guard { call.respond(g.home.scan()) })
+                // Full network scan (mDNS, SSDP/UPnP, port sweep of the /24, NetBIOS name+MAC) and its last result.
+                post("/network/scan", guard { call.respond(g.home.scan()) })
+                get("/network/found", guard { call.respond(g.home.found.value) })
+                // Save a found device: {"host":"192.168.1.20","name":"TV da Sala","room":"Sala"}.
+                post("/devices/add", guard {
+                    val b = AppJson.parseToJsonElement(call.receiveText()) as JsonObject
+                    fun f(k: String) = (b[k] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                    val found = g.home.found.value.firstOrNull { it.host == f("host") }
+                        ?: io.github.assistent.tools.NetDevice(f("host"), kind = f("kind").ifBlank { "tv" }, mac = f("mac"),
+                            ports = listOf(5555).filter { io.github.assistent.tools.NetworkScanner.isOpen(f("host"), it, 600) })
+                    call.respond(g.home.add(found.copy(mac = f("mac").ifBlank { found.mac }), f("name").ifBlank { found.name }, f("room")))
                 })
+                post("/devices/{id}/wake", guard {
+                    val d = g.home.find(call.parameters["id"]!!) ?: error("not found")
+                    call.respond(buildJsonObject { put("result", g.home.wake(d)) })
+                })
+                post("/devices/{id}/adb", guard {
+                    val d = g.home.find(call.parameters["id"]!!) ?: error("not found")
+                    call.respond(buildJsonObject { put("result", g.home.authorizeAdb(d)) })
+                })
+                get("/devices/{id}/online", guard {
+                    val d = g.home.find(call.parameters["id"]!!) ?: error("not found")
+                    call.respond(buildJsonObject { put("online", kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { g.home.online(d) }) })
+                })
+                delete("/devices/{id}", guard { g.home.remove(call.parameters["id"]!!); call.respond(ok()) })
+                post("/bluetooth/scan", guard { call.respond(g.home.scanBluetooth(10)) })
                 post("/devices/{id}/status", guard {
                     val id = call.parameters["id"] ?: error("missing device id")
                     val tool = g.tools.find("tv_control") ?: error("tv_control unavailable")

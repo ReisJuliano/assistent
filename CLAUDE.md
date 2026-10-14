@@ -302,6 +302,24 @@ Real-time DSP on every TTS output in `PcmPlayer`: ring modulation + feedback com
 - The brain only overrides a reply with "não consegui concluir" when an *action* tool's last attempt failed;
   read-only tools (search, read page, weather…) failing is normal and doesn't discard a good answer.
 
+### TVs, PCs and Wake-on-LAN (`tools/NetworkScanner.kt`, `HomeDevices.kt`, `TvAdb.kt`)
+
+- Scan (Settings → Casa → TVs e computadores, `POST /network/scan`, ~12 s on the emulator): mDNS + SSDP/UPnP
+  (friendly name, maker, model, DIAL Application-URL) + a sweep of the /24 for identifying ports, all concurrent (the
+  sweep has its own wide IO pool: blocking connects starved the default 64-thread pool), with a Wi-Fi multicast lock.
+  Windows PCs give name + MAC via NetBIOS node status (if the firewall allows it); Android TVs give their MAC over ADB
+  (`ip -o link` of the interface carrying the TV's IP — /sys/class/net is not readable by the shell).
+- `HomeDevices.wake`: magic packet to the directed broadcast, 255.255.255.255 and the last IP, ports 9 and 7, three
+  times, then waits until the device really answers (TV 40 s, PC 90 s). `authorizeAdb` triggers the TV's "allow debugging"
+  prompt and stores model + MAC. Bluetooth scan (classic + BLE) lists nearby devices.
+- `tv_control` actions: status, now_playing, power_on (ADB wake or WoL+ADB), power_off, sleep_timer/cancel_sleep_timer (a
+  named timer "Desligar <TV>" → power_off when it ends, survives restarts), keys, play/pause (verified), next/previous,
+  seek ±seconds, volume_set (volume keys + read back from `dumpsys audio`, works with HDMI-CEC), open_app, play_youtube
+  (first result of a YouTube search page, opened with `vnd.youtube:`), search, play_url, notify (message on the TV),
+  type_text. TVs without ADB (Samsung/LG/Chromecast) get YouTube/Netflix through DIAL.
+- Verified on the emulator acting as the TV: scan, add, authorise (+MAC), notify, sleep timer turning it off. The
+  emulator's outdated YouTube app can't confirm playback; real TVs pending.
+
 ### Spotify (`tools/SpotifyTools.kt`)
 
 - Each owner creates a free app at developer.spotify.com, registers `http://127.0.0.1:4381/callback` as redirect URI and
