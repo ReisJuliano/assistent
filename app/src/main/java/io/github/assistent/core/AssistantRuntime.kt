@@ -190,21 +190,12 @@ class AssistantRuntime(
                 delay(if (a == Activity.SEARCHING) 1_300L else 1_700L)
                 if (state.value.activity != a || waitingLineActivity != a) return@launch
                 val engine = emotionEngine
-                if (engine != null && engine.shouldShowHmmBubble()) {
-                    showBubble("Hmm...", speak = false, emotion = Emotion.THINKING, keepEmotion = true)
-                    engine.lastVocalizationMs = System.currentTimeMillis()
-                } else {
-                    val cat = if (a == Activity.SEARCHING) "thinking_wait_search" else "thinking_wait"
-                    val examples = if (a == Activity.SEARCHING) WAITING_LINES_SEARCH else WAITING_LINES
-                    val line = Catchphrases.line(cat, examples)
-                    showBubble(line, speak = false, emotion = Emotion.THINKING, keepEmotion = true)
-                    // Keep this coroutine alive until the complete filler is
-                    // spoken. The response's speaker.speak() will wait on the
-                    // Speaker mutex instead of interrupting it.
-                    waitingLineStarted = true
-                    engine?.let { it.lastVocalizationMs = System.currentTimeMillis() }
-                    speaker.speak(line)
-                }
+                // Only show a silent bubble — audio thinking phrase comes exclusively from onToolCall/quickPhrase.
+                // This prevents double-audio when setActivity(SEARCHING) starts a new job after onToolCall already spoke.
+                val cat = if (a == Activity.SEARCHING) "thinking_wait_search" else "thinking_wait"
+                val examples = if (a == Activity.SEARCHING) WAITING_LINES_SEARCH else WAITING_LINES
+                val line = if (engine != null && engine.shouldShowHmmBubble()) "Hmm..." else Catchphrases.line(cat, examples)
+                showBubble(line, speak = false, emotion = Emotion.THINKING, keepEmotion = true)
             } finally {
                 waitingLineStarted = false
                 if (waitingLineActivity == a) {
