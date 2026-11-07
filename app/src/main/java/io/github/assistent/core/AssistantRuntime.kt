@@ -357,10 +357,15 @@ class AssistantRuntime(
                 speechPipeline = pipeline
                 pipeline.start()
                 brain.onToolCall = { toolName, hint ->
+                    // Cancel waitingLineJob so it doesn't fire a second phrase independently
+                    if (!waitingLineStarted) {
+                        waitingLineJob?.cancel()
+                        waitingLineJob = null
+                    }
                     val phrase = brain.quickPhrase(hint)
-                        ?: Catchphrases.line("thinking_wait_search", emptyList())
-                    if (!interruptRequested && phrase.isNotBlank()) {
-                        pipeline.submit(phrase)
+                    if (phrase != null && !interruptRequested && phrase.isNotBlank()) {
+                        // Speak immediately via speaker (before pipeline answer, not queued with it)
+                        speaker.speak(phrase)
                         emotionEngine?.lastVocalizationMs = System.currentTimeMillis()
                     }
                 }

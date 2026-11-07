@@ -335,11 +335,11 @@ class Brain(
                 else -> tones.any { it in PLAYFUL_TONES }
             }
             if (!on) return if (jokes == "never") "Do not make jokes; stay friendly but straightforward." else null
-            return "Humour: give the useful answer first, then often add ONE short, clever joke or pun about that very " +
-                "subject, including what you just found with web_search, the weather, a fact, a reminder or a memory. " +
-                "Vary the kind of joke (wordplay, playful exaggeration, a funny comparison, self-irony as a robot). " +
-                "Never joke at the user's expense, about sad news, health problems, emergencies, grief or when the user " +
-                "is upset or asks for seriousness; then be warm and serious. Don't explain the joke and don't repeat jokes."
+            return "Humour: give the useful answer first. Occasionally (not always) add ONE short, clever joke only " +
+                "when it genuinely fits — a wordplay, funny comparison or self-irony as a robot. " +
+                "Skip the joke for simple factual questions (weather, time, conversions), direct commands, " +
+                "and any sad, health, emergency or serious topic. When in doubt, skip it. " +
+                "Never joke at the user's expense. Don't explain the joke and don't repeat jokes."
         }
 
         fun toneInstruction(tone: String, custom: String) =
