@@ -476,7 +476,7 @@ private fun SettingsList(
                         Button(onClick = { graph.scope.launch { graph.runtime.say("Bip bop! Sistemas online. Eu sou ${cfg.personality.name}, e essa é a minha voz de robô.", Emotion.HAPPY) } }) {
                             Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Testar voz")
                         }
-                        Segmented(listOf("android" to "Sistema", "openai" to "OpenAI / Kokoro", "elevenlabs" to "ElevenLabs"), cfg.tts.provider) { v ->
+                        Segmented(listOf("android" to "Sistema", "openai" to "OpenAI / Kokoro", "elevenlabs" to "ElevenLabs", "azure" to "Azure"), cfg.tts.provider) { v ->
                             up { it.copy(tts = it.tts.copy(provider = v)) }
                         }
                         when (cfg.tts.provider) {
@@ -492,6 +492,12 @@ private fun SettingsList(
                                 Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
                                 Field("Voice ID", cfg.tts.elevenLabsVoiceId) { v -> up { it.copy(tts = it.tts.copy(elevenLabsVoiceId = v.trim())) } }
                                 Field("Modelo", cfg.tts.elevenLabsModel) { v -> up { it.copy(tts = it.tts.copy(elevenLabsModel = v.trim())) } }
+                            }
+                            "azure" -> {
+                                Hint("Azure TTS — free 500k chars/mês. Crie em portal.azure.com > Cognitive Services > Speech. Vozes masculinas pt-BR: pt-BR-FabioNeural, pt-BR-AntonioNeural.")
+                                Field("API key", cfg.tts.apiKey, secret = true) { v -> up { it.copy(tts = it.tts.copy(apiKey = v.trim())) } }
+                                Field("Região", cfg.tts.azureRegion) { v -> up { it.copy(tts = it.tts.copy(azureRegion = v.trim())) } }
+                                Field("Voz", cfg.tts.azureVoice) { v -> up { it.copy(tts = it.tts.copy(azureVoice = v.trim())) } }
                             }
                             else -> {
                                 Hint("Voz do sistema. Para uma voz melhor sem custo, instale/ative vozes de alta qualidade nas configurações de TTS do Android, ou use Kokoro local.")

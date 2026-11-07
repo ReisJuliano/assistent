@@ -64,6 +64,7 @@ class Speaker(
             when (cfg.provider) {
                 "openai" -> openAi(spokenText, cfg)
                 "elevenlabs" -> elevenLabs(spokenText, cfg)
+                "azure" -> azure(spokenText, cfg)
                 else -> androidTts(spokenText, cfg)
             }
         }
@@ -96,6 +97,19 @@ class Speaker(
             .url("https://api.elevenlabs.io/v1/text-to-speech/${cfg.elevenLabsVoiceId}/stream?output_format=pcm_24000")
             .header("xi-api-key", cfg.apiKey)
             .post(body.toString().toRequestBody(EventDispatcher.JSON)).build()
+        return fetch(req, 24_000)
+    }
+
+    /** Azure Cognitive Services TTS — raw 24 kHz PCM. Free tier: 500k chars/month. */
+    private suspend fun azure(text: String, cfg: TtsConfig): Pair<ByteArray, Int> {
+        val ssml = """<speak version='1.0' xml:lang='pt-BR'><voice name='${cfg.azureVoice}'>${text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</voice></speak>"""
+        val req = Request.Builder()
+            .url("https://${cfg.azureRegion}.tts.speech.microsoft.com/cognitiveservices/v1")
+            .header("Ocp-Apim-Subscription-Key", cfg.apiKey)
+            .header("Content-Type", "application/ssml+xml")
+            .header("X-Microsoft-OutputFormat", "raw-24khz-16bit-mono-pcm")
+            .post(ssml.toRequestBody(null))
+            .build()
         return fetch(req, 24_000)
     }
 

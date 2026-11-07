@@ -140,8 +140,8 @@ data class VoiceConfig(
 @Serializable
 data class TtsConfig(
     /** Robot effect applied to any voice: off, light, classic, heavy. */
-    val robotVoice: String = "classic",
-    /** "android", "openai" (OpenAI or any compatible server, e.g. Kokoro-FastAPI) or "elevenlabs". */
+    val robotVoice: String = "off",
+    /** "android", "openai" (OpenAI or any compatible server, e.g. Kokoro-FastAPI), "elevenlabs" or "azure". */
     val provider: String = "android",
     val baseUrl: String = "https://api.openai.com/v1",
     val apiKey: String = "",
@@ -159,6 +159,10 @@ data class TtsConfig(
     val androidRobot: Boolean = false,
     val pitch: Float = 1.1f,
     val prefetch: Int = 2,
+    /** Azure TTS region, e.g. "eastus", "brazilsouth". */
+    val azureRegion: String = "eastus",
+    /** Azure TTS voice name, e.g. "pt-BR-FabioNeural" (masculine) or "pt-BR-AntonioNeural". */
+    val azureVoice: String = "pt-BR-FabioNeural",
 )
 
 @Serializable
