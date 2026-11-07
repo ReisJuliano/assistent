@@ -21,6 +21,7 @@ class NeuralBrainClient(
 ) {
     @Volatile var serverUrl: String = ""
     @Volatile var connected: Boolean = false
+    @Volatile private var sleeping: Boolean = false
 
     @Serializable
     private data class NeuralState(
@@ -40,10 +41,17 @@ class NeuralBrainClient(
     init {
         scope.launch(Dispatchers.IO) {
             while (true) {
-                delay(30_000)
+                // Sync less often while sleeping — ESN drifts slowly anyway.
+                delay(if (sleeping) 300_000L else 30_000L)
                 if (serverUrl.isNotBlank()) syncState()
             }
         }
+    }
+
+    /** Tells the server the robot is sleeping/waking; adjusts sync cadence and sends the event. */
+    fun setSleeping(asleep: Boolean) {
+        sleeping = asleep
+        sendEvent(if (asleep) "sleep" else "wake")
     }
 
     fun configure(url: String) {
@@ -85,6 +93,17 @@ class NeuralBrainClient(
         return withContext(Dispatchers.IO) {
             try {
                 val raw = get("$serverUrl/thought") ?: return@withContext null
+                json.decodeFromString<ThoughtResponse>(raw)
+            } catch (_: Exception) { null }
+        }
+    }
+
+    /** Returns the dream mood after sleep — null if server unreachable. */
+    suspend fun fetchDream(): ThoughtResponse? {
+        if (!connected || serverUrl.isBlank()) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val raw = get("$serverUrl/dream") ?: return@withContext null
                 json.decodeFromString<ThoughtResponse>(raw)
             } catch (_: Exception) { null }
         }

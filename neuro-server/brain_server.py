@@ -58,6 +58,8 @@ W_out = rng.standard_normal((5, N_RESERVOIR)) * 0.3
 # ── State ─────────────────────────────────────────────────────────────────────
 x = np.zeros(N_RESERVOIR)
 last_save = 0.0
+is_sleeping = False
+dream_state: dict | None = None  # snapshot taken at sleep onset, modified during sleep
 
 
 def load_state():
@@ -79,7 +81,12 @@ def save_state():
 
 
 def step(event: str, intensity: float = 1.0):
-    global x
+    global x, is_sleeping, dream_state
+    if event == "sleep":
+        is_sleeping = True
+        dream_state = read_state()  # start dream from current mood
+    elif event == "wake":
+        is_sleeping = False
     idx = EVENT_IDX.get(event)
     if idx is None:
         return
@@ -162,19 +169,39 @@ def get_thought():
     return {"category": category, "intensity": intensity}
 
 
+@app.get("/dream")
+def get_dream():
+    """Returns the mood that accumulated during sleep, so Android can seed the wake state."""
+    s = dream_state if dream_state is not None else read_state()
+    category, intensity = thought_category(s)
+    return {"category": category, "intensity": intensity, "sleeping": is_sleeping}
+
+
 # ── Daily rhythm background task ───────────────────────────────────────────────
 async def daily_rhythm():
+    global dream_state
+    tick = 0
     while True:
         await asyncio.sleep(60)
         hour = time.localtime().tm_hour
-        if 0 <= hour < 6:
-            step("long_idle", 0.3)
-        elif 6 <= hour < 9:
-            step("wake", 0.1)
-        elif 22 <= hour < 24:
-            step("sleep", 0.1)
+        if is_sleeping:
+            # Dream drift: slow random walk through emotion space.
+            # Every ~10 min of sleep the dream shifts slightly.
+            if tick % 10 == 0:
+                noise = rng.standard_normal(N_INPUTS) * 0.08
+                global x
+                x = (1 - LEAK_RATE) * x + LEAK_RATE * np.tanh(W @ x + W_in @ noise)
+                dream_state = read_state()
+        else:
+            if 0 <= hour < 6:
+                step("long_idle", 0.3)
+            elif 6 <= hour < 9:
+                step("wake", 0.1)
+            elif 22 <= hour < 24:
+                step("sleep", 0.1)
         if time.time() - last_save > 300:
             save_state()
+        tick += 1
 
 
 @app.on_event("startup")

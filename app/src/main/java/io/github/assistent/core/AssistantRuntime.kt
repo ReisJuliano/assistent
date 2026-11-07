@@ -237,6 +237,7 @@ class AssistantRuntime(
         interruptSpeaking()
         setActivity(Activity.SLEEPING)
         scope.launch { sleepTracker.onSleep() }
+        neuralBrain?.setSleeping(true)
         events.emit("sleep")
     }
 
@@ -279,6 +280,11 @@ class AssistantRuntime(
             drawAwakeTime()
             setActivity(Activity.IDLE)
             scope.launch { sleepTracker.onWake() }
+            scope.launch {
+                val dream = neuralBrain?.fetchDream()
+                if (dream?.category != null) emotionEngine?.onDreamWake(dream.category, dream.intensity)
+            }
+            neuralBrain?.setSleeping(false)
             life.onConversation() // just woke up: no hobby right away
             if (greet) {
                 if (config.current.life.enabled && config.current.life.wakeReactions) life.onWokeUp()

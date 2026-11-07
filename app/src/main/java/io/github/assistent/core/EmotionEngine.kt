@@ -116,6 +116,16 @@ class EmotionEngine(private val scope: CoroutineScope) {
         else                                          -> Emotion.NEUTRAL
     }
 
+    /** Called on wake; dream category from the neural server bleeds into the robot's starting mood. */
+    fun onDreamWake(category: String, intensity: Float) {
+        when (category) {
+            "quip_animado"       -> { robotValence = intensity * 0.6f; robotArousal = 0.3f }
+            "thinking_hmm"       -> { robotCuriosity = intensity * 0.7f; robotBoredom = 0.2f }
+            "thinking_found"     -> { robotCuriosity = intensity; robotValence = 0.3f }
+            "thinking_wait_long" -> { robotAnxiety = intensity * 0.4f }
+        }
+    }
+
     /** Jokes are appropriate only when the user seems positive and the robot is not anxious/sad. */
     fun jokesAppropriate(): Boolean =
         userValence > -0.1f && robotValence > -0.1f && userArousal > -0.5f
