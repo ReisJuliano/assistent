@@ -81,6 +81,26 @@ class Brain(
         }
     }
 
+    /**
+     * Generates a dream story bubble: "estou sonhando que..." + short narrative.
+     * Max 20 words, no quotes, timeout 3 s.
+     */
+    suspend fun dreamPhrase(moodHint: String): String? {
+        val cfg = config.current
+        if (cfg.llm.baseUrl.isBlank()) return null
+        return withTimeoutOrNull(3_000) {
+            try {
+                val messages = listOf(
+                    ChatMessage("system", "Você é um robô dormindo. Gere UMA frase de balão de sonho em português (máximo 20 palavras) começando exatamente com 'estou sonhando que' descrevendo um sonho $moodHint e curioso. Só a frase, sem aspas."),
+                    ChatMessage("user", "sonho"),
+                )
+                llm.complete(cfg.llm, messages, emptyList()).content?.trim()
+                    ?.takeIf { it.isNotBlank() && it.length < 120 }
+                    ?.let { if (it.startsWith("estou sonhando", ignoreCase = true)) it else "estou sonhando que $it" }
+            } catch (_: Exception) { null }
+        }
+    }
+
     suspend fun autoRemember(userText: String, assistantText: String) {
         val cfg = config.current
         if (!cfg.memory.autoExtract) return

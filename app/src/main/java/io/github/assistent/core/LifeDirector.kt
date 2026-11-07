@@ -62,6 +62,10 @@ class LifeDirector(
     /** Shows a short line in the speech bubble (text, said while sleeping). */
     var onQuip: (String, Boolean) -> Unit = { _, _ -> }
 
+    /** Set by AppGraph: generates an AI dream story for sleep bubbles. Returns null if unavailable. */
+    var onDreamBubble: (suspend (moodHint: String) -> String?)? = null
+    private var nextDreamBubbleAt = 0L
+
     fun start() {
         scope.launch { while (true) { tick(); delay(500) } }
         scope.launch(Dispatchers.IO) {
@@ -171,6 +175,20 @@ class LifeDirector(
             Activity.SLEEPING -> {
                 if (cfg.selfWake && chance(50 * 60)) onSelfWake()
                 else if (cfg.dreams && current == null && chance(25 * 60)) dreamScene(cfg.scenes)?.let(::play)
+                // Dream bubble: AI-generated mini story, roughly once every 20 min while sleeping.
+                if (s.bubble == null && onDreamBubble != null && now > nextDreamBubbleAt && chance(20 * 60)) {
+                    nextDreamBubbleAt = now + 10 * 60_000L // at most once per 10 min even if called fast
+                    val moodHint = when {
+                        (emotionEngine?.robotCuriosity ?: 0f) > 0.5f -> "curioso e aventureiro"
+                        (emotionEngine?.robotValence   ?: 0f) > 0.3f -> "feliz e leve"
+                        (emotionEngine?.robotAnxiety   ?: 0f) > 0.4f -> "agitado e estranho"
+                        else -> "calmo e sereno"
+                    }
+                    scope.launch {
+                        val story = onDreamBubble?.invoke(moodHint) ?: return@launch
+                        onQuip(story, false) // silent — just the bubble
+                    }
+                }
             }
             Activity.LISTENING -> Unit // someone is talking to it
             else -> {

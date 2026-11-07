@@ -199,6 +199,7 @@ class AppGraph(context: Context) {
         brain.emotionEngine = emotionEngine
         brain.ambientBuffer = ambientBuffer
         runtime.neuralBrain = neuralBrain
+        runtime.life.onDreamBubble = { moodHint -> brain.dreamPhrase(moodHint) }
         // Save significant ambient phrases to long-term memory for future recall.
         ambientBuffer.onSignificant = { text ->
             scope.launch { memory.add(text, tags = "ambient ouvido", source = "ambient", share = false) }
