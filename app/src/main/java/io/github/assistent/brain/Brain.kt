@@ -3,7 +3,9 @@ package io.github.assistent.brain
 import android.util.Log
 import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.Activity
+import io.github.assistent.core.AmbientBuffer
 import io.github.assistent.core.AppJson
+import io.github.assistent.core.EmotionEngine
 import io.github.assistent.core.Emotion
 import io.github.assistent.core.PresenceTracker
 import io.github.assistent.data.MemoryRepository
@@ -13,9 +15,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -38,6 +42,12 @@ class Brain(
     private val lock = Mutex()
     @Volatile private var interruptedReply: InterruptedReply? = null
 
+    /** Set by AppGraph after construction. */
+    var emotionEngine: EmotionEngine? = null
+    var ambientBuffer: AmbientBuffer? = null
+    /** Set by AssistantRuntime per turn; fired when the first tool call of a round is detected. */
+    var onToolCall: (suspend (toolName: String, queryHint: String) -> Unit)? = null
+
     fun clearHistory() = history.clear()
 
     fun noteInterrupted(fullText: String, spokenUpTo: String, emotion: Emotion) {
@@ -50,6 +60,25 @@ class Brain(
         if (last?.role == "assistant" && last.toolCalls == null && last.content?.trim() == full) history.removeLast()
         history += ChatMessage("assistant", spoken.ifBlank { "..." })
         history += ChatMessage("system", "[interrompido pelo usuário depois de: '$spoken'; o resto planejado era: '${full.removePrefix(spoken).trim()}']")
+    }
+
+    /**
+     * Quick single-round LLM call for a natural thinking-aloud phrase about [topic].
+     * Returns null on timeout or error so callers fall back to PhrasePool.
+     */
+    suspend fun quickPhrase(topic: String, timeoutMs: Long = 1_400): String? {
+        val cfg = config.current
+        if (cfg.llm.baseUrl.isBlank()) return null
+        return withTimeoutOrNull(timeoutMs) {
+            try {
+                val messages = listOf(
+                    ChatMessage("system", "Você é um assistente. Diga UMA frase natural e curta em português (máximo 12 palavras) como se estivesse pensando em voz alta enquanto busca sobre o assunto. Só a frase, sem aspas, sem ponto final. Exemplos: 'Calma aí que tô vendo', 'Deixa eu dar uma olhada nisso', 'Hmm, vou checar sobre ${topic.take(20)}'"),
+                    ChatMessage("user", topic.take(80)),
+                )
+                llm.complete(cfg.llm, messages, emptyList()).content?.trim()
+                    ?.takeIf { it.isNotBlank() && it.length < 80 }
+            } catch (_: Exception) { null }
+        }
     }
 
     suspend fun autoRemember(userText: String, assistantText: String) {
@@ -131,6 +160,14 @@ class Brain(
             messages += assistantMsg; turn += assistantMsg
             // Independent calls of the same round run in parallel (e.g. weather + a search); results keep their order.
             calls.mapNotNull { tools.find(it.function.name) }.firstOrNull()?.let { onActivity(it.activity) }
+            calls.firstOrNull()?.let { call ->
+                val hint = runCatching {
+                    AppJson.parseToJsonElement(call.function.arguments).jsonObject
+                        .let { it["query"] ?: it["url"] ?: it["text"] ?: it["q"] }
+                        ?.jsonPrimitive?.contentOrNull.orEmpty()
+                }.getOrDefault(call.function.name)
+                onToolCall?.invoke(call.function.name, hint.ifBlank { call.function.name })
+            }
             val results = kotlinx.coroutines.coroutineScope {
                 calls.map { call ->
                     async {
@@ -157,7 +194,11 @@ class Brain(
             }
         }
 
-        val (emotion, parsedText) = parseEmotion(final?.content.orEmpty())
+        val rawContent = final?.content.orEmpty()
+        val userEmotionMatch = USER_EMOTION_RE.find(rawContent)
+        val rawForParsing = if (userEmotionMatch != null) rawContent.replace(USER_EMOTION_RE, "") else rawContent
+        userEmotionMatch?.groupValues?.get(1)?.let { emotionEngine?.onUserEmotionTag(it) }
+        val (emotion, parsedText) = parseEmotion(rawForParsing)
         val asksReminder = userText.lowercase().let { it.contains("lembrete") || it.contains("me lembre") || it.contains("alarme") }
         val actionFailed = actionOutcome.values.any { !it }
         val text = if (actionFailed && !admitsFailure(parsedText)) {
@@ -199,7 +240,16 @@ class Brain(
             appendLine("When asked who someone is, answer naturally and briefly: use the relationship/description (for example, 'é sua esposa') or the person's name ('é a Rúbia'). Never say 'é você' or 'você é...' as a generic filler when identifying someone. Never say they are 'the person you registered', 'the person you told me to register', or expose database/cadastro wording. You may make a short playful joke when it fits, then state the correct name or relationship.")
             appendLine("Always reply in ${locale.getDisplayLanguage(Locale.ENGLISH)} (${p.language}).")
             appendLine("Tone of voice: ${toneFor(p)}")
-            humorInstruction(selectedTones(p), p.jokes)?.let { appendLine(it) }
+            val engine = emotionEngine
+            if (engine != null && !engine.jokesAppropriate()) {
+                if (p.jokes != "never") appendLine("O usuário parece estar em modo sério agora: prefira uma resposta direta e acolhedora sem piadas.")
+            } else {
+                humorInstruction(selectedTones(p), p.jokes)?.let { appendLine(it) }
+            }
+            if (engine != null) {
+                if (engine.userValence < -0.3f) appendLine("O usuário parece estar se sentindo mal ou estressado. Seja mais acolhedor e empático.")
+                if (engine.userValence > 0.4f) appendLine("O usuário parece animado ou bem-humorado. Pode ser mais descontraído.")
+            }
             if (p.kidsMode) appendLine("You are talking with CHILDREN: short simple words, warm and patient, nothing scary, violent or adult; explain like to a 7-year-old.")
             appendLine(
                 "Your replies are SPOKEN aloud. Length: " + when (p.verbosity) {
@@ -209,6 +259,7 @@ class Brain(
                 } + " No markdown, lists, emojis, URLs or code. Say numbers and units the way people speak them.",
             )
             appendLine("Start EVERY reply with exactly one emotion tag for your face: ${Emotion.entries.joinToString(" ") { "[${it.tag}]" }}. Example: [happy] Claro, já anotei!")
+            appendLine("Optionally add [user_emotion:word] right after your emotion tag when you can tell how the user seems to feel from context (one word only: happy/sad/stressed/calm/angry/humorado/neutro). Example: [happy][user_emotion:happy] Claro!")
             appendLine("Use tools whenever you need current information (web_search, get_weather), to remember or recall facts about the user, to create reminders/alarms, or to control devices and webhooks. Never invent facts you could look up.")
             appendLine(CapabilityPlanner.instructions())
             appendLine(CapabilityPlanner.catalog(tools.all()))
@@ -226,6 +277,9 @@ class Brain(
                 }
             }
             if (p.extraInstructions.isNotBlank()) appendLine(p.extraInstructions)
+            ambientBuffer?.contextSnippet()?.let { ctx ->
+                appendLine("\nContexto ambiental (últimos minutos, não foi dito diretamente pra você — pode estar incompleto):\n$ctx")
+            }
         }
     }
 
@@ -291,6 +345,7 @@ class Brain(
         fun toneInstruction(tone: String, custom: String) =
             if (tone == "custom" && custom.isNotBlank()) custom else TONES[tone] ?: TONES.getValue("natural")
         private val TAG_RE = Regex("\\[(\\w+)]")
+        private val USER_EMOTION_RE = Regex("""\[user_emotion:(\w+)\]""")
 
         /** Extracts the leading `[emotion]` tag and strips any tags/markdown left in the text. */
         fun parseEmotion(raw: String): Pair<Emotion, String> {

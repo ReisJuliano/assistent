@@ -97,6 +97,11 @@ data/                     Room: memories, reminders, people (v2, migration 1→2
 4. `runtime.say()` → `Speaker` → `PcmPlayer`; face shows `SPEAKING` and the mouth follows `player.level`.
 5. Follow-up: listens again for `wake.followUpSeconds` without needing the wake phrase.
 
+A face tap starts listening; a second tap cancels the current utterance and ends that exchange without
+queuing another listen or stopping the wake-word service. Each tap is handled immediately; three quick taps
+(up to 500 ms apart) put it to sleep. During speech, a tap still interrupts the reply. Weather ambience is
+independent of these actions.
+
 ### The face
 
 - **Never add per-emotion colors**: the face always uses the user's color (`face.color`). Expressions change
@@ -141,7 +146,12 @@ data/                     Room: memories, reminders, people (v2, migration 1→2
   is shortened by `sleepFactor()`, and idle quips use time-specific phrase categories (`quip_morning`, `quip_lunch`…).
 - Weather is shown as **moments** (`startWeatherMoment`): a few times a day for 1–2 min when the weather is notable,
   with its own scene (`WX_RAIN` umbrella, `WX_COLD` scarf + hot drink, `WX_HOT` sunglasses + sun). `life.weatherAlways`
-  shows it permanently. The umbrella geometry (`UmbrellaGeo`) is shared with the rain renderer so drops stop at the canopy.
+  shows it permanently. Whenever rain/drizzle/storm is visible, the existing umbrella prop and holding hand stay up
+  independently of the 16 s weather scene, including during conversation and sleep. Other scenes may release
+  the umbrella to use the hands; they never stop the ambient rain. `weatherAlways` keeps the weather visible
+  after weather moments expire and through scene cancellation, listening and speech. The umbrella geometry
+  (`UmbrellaGeo`) is shared with the rain renderer: its curved, tilted canopy clips drops and casts a dry shadow
+  along their direction of travel.
 - Sleep/wake rules (owner's wish: a calm, random cycle): it may sleep with people around. Each time it wakes it draws
   how long it stays up without interaction (0.4×–2.5× `wake.sleepAfterSeconds`, shorter at night); it may also nap at
   random (even in the middle of a hobby) and wake up on its own now and then. **Asleep, nothing but an interaction wakes

@@ -85,6 +85,8 @@ data class LlmConfig(
     val maxToolRounds: Int = 6,
     val historySize: Int = 20,
     val timeoutSeconds: Int = 120,
+    /** URL of the PC neural brain server (neuro-server/brain_server.py). Empty = use on-device only. */
+    val neuralServerUrl: String = "",
 )
 
 @Serializable
@@ -171,7 +173,7 @@ data class WakeConfig(
     val nameAliases: List<String> = emptyList(),
     /** 0..1, higher = stricter matching. */
     val sensitivity: Float = 0.82f,
-    val modelUrl: String = "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip",
+    val modelUrl: String = "https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1.zip",
     val sleepAfterSeconds: Int = 600,
     /** After answering, keep listening this long without needing the wake phrase. 0 disables. */
     val followUpSeconds: Int = 6,

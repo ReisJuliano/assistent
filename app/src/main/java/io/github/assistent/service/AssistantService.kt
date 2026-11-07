@@ -150,6 +150,7 @@ class AssistantService : LifecycleService() {
             onPcm = graph.ears::feed,
             strict = { runtime.state.value.activity == Activity.SLEEPING },
             music = { graph.interactions.musicPlaying },
+            onHeardText = { text -> graph.ambientBuffer.add(text) },
         )
     }
 

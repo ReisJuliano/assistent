@@ -72,6 +72,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -389,6 +390,11 @@ private fun SettingsList(
                             Field("API key", cfg.llm.apiKey, secret = true) { v -> up { it.copy(llm = it.llm.copy(apiKey = v.trim())) } }
                         }
                         Field("Modelo", cfg.llm.model) { v -> up { it.copy(llm = it.llm.copy(model = v.trim())) } }
+                        Field("Servidor neural (PC)", cfg.llm.neuralServerUrl, keyboard = KeyboardType.Uri) { v ->
+                            up { it.copy(llm = it.llm.copy(neuralServerUrl = v.trim())) }
+                        }
+                        val neuralConnected by remember { derivedStateOf { graph.neuralBrain.connected } }
+                        if (cfg.llm.neuralServerUrl.isNotBlank()) Hint(if (neuralConnected) "Cérebro neural conectado ✓" else "Cérebro neural: sem conexão")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(onClick = {
                                 result = "testando…"

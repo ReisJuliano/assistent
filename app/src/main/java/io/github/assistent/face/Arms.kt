@@ -68,7 +68,7 @@ object Arms {
                 val y = if (sip) 0.27f else 0.42f
                 return ArmPose(Offset(-0.06f, y), Offset(0.06f, y))
             }
-            Scene.WX_RAIN -> return ArmPose(null, Offset(UmbrellaGeo.SHAFT_X, UmbrellaGeo.HANDLE_Y - 0.03f))
+            Scene.WX_RAIN -> return ArmPose(null, UmbrellaGeo.hand)
             Scene.WX_HOT -> return if (t < 6f || t > 10f) ArmPose(null, Offset(0.42f + sin(time * 14f) * 0.03f, 0.08f)) else ArmPose()
             Scene.GAMING -> {
                 val press = if ((time * 5f).toInt() % 3 == 0) 0.01f else 0f

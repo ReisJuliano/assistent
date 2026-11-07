@@ -57,6 +57,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val graph get() = (application as AssistentApp).graph
     private var tracker: FaceTracker? = null
+    private var lastFaceTapAt = 0L
+    private var faceTapCount = 0
+    private var gazeStartMs = 0L
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         onPermissionsChanged()
@@ -194,9 +197,6 @@ class MainActivity : ComponentActivity() {
                 }.pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { onFaceTap() },
-                        onDoubleTap = {
-                            if (graph.runtime.state.value.activity == Activity.SLEEPING) graph.runtime.wake() else graph.runtime.sleep()
-                        },
                         onLongPress = { showSettings = true },
                     )
                 },
@@ -247,8 +247,18 @@ class MainActivity : ComponentActivity() {
 
     private fun onFaceTap() {
         val runtime = graph.runtime
+        val now = android.os.SystemClock.uptimeMillis()
+        faceTapCount = if (now - lastFaceTapAt <= 500L) faceTapCount + 1 else 1
+        lastFaceTapAt = now
+        if (faceTapCount == 3) {
+            faceTapCount = 0
+            runtime.stopListening()
+            runtime.sleep()
+            return
+        }
         when {
             runtime.state.value.activity == Activity.SPEAKING -> runtime.interruptSpeaking()
+            runtime.state.value.activity == Activity.LISTENING -> runtime.stopListening()
             runtime.state.value.serviceRunning -> runtime.manualTrigger.trySend(Unit)
             hasPermission(Manifest.permission.RECORD_AUDIO) -> graph.scope.launch { runtime.converse() }
             else -> requestMissingPermissions()
@@ -275,7 +285,21 @@ class MainActivity : ComponentActivity() {
                 tracker = FaceTracker(
                     this, { g ->
                         graph.runtime.onFace(g)
-                        if (!g.present) {
+                        if (g.present) {
+                            // Gaze-based activation: direct look for 2.2 s while idle triggers listen.
+                            val isDirect = g.yaw in -15f..15f && g.pitch in -20f..10f
+                            val now = System.currentTimeMillis()
+                            if (isDirect && graph.runtime.state.value.activity == Activity.IDLE) {
+                                if (gazeStartMs == 0L) gazeStartMs = now
+                                if (now - gazeStartMs > 2_200L) {
+                                    gazeStartMs = 0L
+                                    graph.runtime.manualTrigger.trySend(Unit)
+                                }
+                            } else {
+                                gazeStartMs = 0L
+                            }
+                        } else {
+                            gazeStartMs = 0L
                             graph.presence.clear()
                             graph.greeter.onFaceGone()
                             graph.body.onFaceGone()

@@ -158,6 +158,13 @@ fun RobotFace(
                 } else base
                 animator.scene = if (frame != null) sc else null
                 animator.arms = if (cfg.showArms) Arms.pose(if (frame != null) sc else null, sceneT, act, emo, wavingState.value, animator.time) else ArmPose()
+                // Other actions may need the hands. Only the umbrella yields; the ambient rain keeps
+                // running on its own clock, regardless of scene changes, conversation or cancellation.
+                animator.umbrella = animator.scene == Scene.WX_RAIN ||
+                    (amb.isWet && animator.scene == null)
+                if (cfg.showArms && animator.umbrella) {
+                    animator.arms = animator.arms.copy(right = UmbrellaGeo.hand)
+                }
                 animator.sceneT = sceneT
                 animator.sceneSeed = startedAt
                 animator.step(
@@ -308,6 +315,7 @@ internal class FaceAnimator {
     var sceneT = 0f
     var sceneSeed = 0L
     var ambient = Ambient()
+    var umbrella = false
     /** Target arm pose and smoothed hand positions / visibility. */
     var arms = ArmPose()
     /** 0..1 white "light" level of the current light gag (not a spring: the gag script eases it). */
@@ -508,10 +516,7 @@ private fun DrawScope.drawFace(a: FaceAnimator, cfg: FaceConfig, activity: Activ
         glowPaint.maskFilter = if (radius > 0.5f) BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL) else null
     }
 
-    val shelter = if (a.scene == Scene.WX_RAIN) {
-        val sx = cx + UmbrellaGeo.SHAFT_X * unit
-        androidx.compose.ui.geometry.Rect(sx - UmbrellaGeo.RADIUS * unit, cy + UmbrellaGeo.TOP_Y * unit + UmbrellaGeo.RADIUS * unit * 0.25f, sx + UmbrellaGeo.RADIUS * unit, h)
-    } else null
+    val shelter = if (a.umbrella) UmbrellaGeo.rainShelter(cx, cy, unit, p.tilt + a.sway.x, h) else null
     drawWeatherBackground(a.ambient, t, color, shelter)
     if (cfg.showClock) {
         if (cfg.clockStyle == "analog") drawClock(cfg.clockCorner, p.color, unit) else drawDigitalClock(cfg.clockCorner, p.color, unit)
@@ -593,7 +598,11 @@ private fun DrawScope.drawFace(a: FaceAnimator, cfg: FaceConfig, activity: Activ
             if (LightGag.isLight(sc)) {
                 val hand = if (a.rha.x > 0.5f) Offset(a.rhx.x, a.rhy.x) else null
                 with(LightGag) { drawLightProp(sc, a.sceneT, geo, color.copy(alpha = color.alpha * min(1f, a.sceneT * 2f)), hand) }
-            } else drawSceneProps(sc, a.sceneT, a.sceneSeed, geo, color, sc.seconds, a.ambient)
+            } else if (sc != Scene.WX_RAIN) drawSceneProps(sc, a.sceneT, a.sceneSeed, geo, color, sc.seconds, a.ambient)
+        }
+        if (a.umbrella) {
+            drawSceneProps(Scene.WX_RAIN, a.time, a.sceneSeed,
+                FaceGeometry(cx, cy, unit, eyesY, mouthY, sep, ew, eh), color, Scene.WX_RAIN.seconds, a.ambient, fade = false)
         }
         // Arms on top of props so hands hold them.
         if (cfg.showArms) {

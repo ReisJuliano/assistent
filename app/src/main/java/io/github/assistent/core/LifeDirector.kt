@@ -50,6 +50,15 @@ class LifeDirector(
     private var nextQuipAt = System.currentTimeMillis() + gap(8 * 60, 20 * 60)
     private var sleepTalked = 0L
 
+    /** Set by AppGraph: contextual emotion state used to gate spontaneous jokes. */
+    var emotionEngine: io.github.assistent.core.EmotionEngine? = null
+
+    /** Set by AppGraph: ambient speech buffer — when curious, robot may volunteer info from it. */
+    var ambientBuffer: AmbientBuffer? = null
+
+    /** Set by AppGraph: fires manualTrigger to start listening after a proactive ambient comment. */
+    var onAmbientComment: ((String) -> Unit)? = null
+
     /** Shows a short line in the speech bubble (text, said while sleeping). */
     var onQuip: (String, Boolean) -> Unit = { _, _ -> }
 
@@ -178,9 +187,17 @@ class LifeDirector(
                             gap(cfg.minGapSeconds.coerceAtLeast(30), cfg.maxGapSeconds.coerceAtLeast(cfg.minGapSeconds + 1))
                     }
                 }
-                if (s.bubble == null && chance(20 * 60)) {
+                if (s.bubble == null && chance(20 * 60) && emotionEngine?.jokesAppropriate() != false) {
                     val (cat, examples) = weatherQuip(s.ambient)?.takeIf { Random.nextBoolean() } ?: timeQuips(LocalTime.now())
                     onQuip(Catchphrases.line(cat, examples), false)
+                }
+                // Proactive: when curious and there is ambient context, volunteer a comment ~every 8 min.
+                if (s.bubble == null && s.activity == Activity.IDLE
+                    && (emotionEngine?.robotCuriosity ?: 0f) > 0.4f
+                    && ambientBuffer?.contextSnippet() != null
+                    && chance(8 * 60)
+                ) {
+                    onAmbientComment?.invoke(ambientBuffer?.contextSnippet() ?: "")
                 }
                 if (cfg.weatherEffects && current == null && chance(3 * 3600) && weatherScene(s.ambient) != null) startWeatherMoment()
                 // A random nap now and then (reading and nodding off…), never in the middle of a conversation.

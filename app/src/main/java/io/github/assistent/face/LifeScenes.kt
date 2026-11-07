@@ -634,11 +634,12 @@ object Life {
 internal fun DrawScope.drawSceneProps(
     scene: Scene, t: Float, seed: Long, g: FaceGeometry, color: Color, sceneSeconds: Float,
     ambient: io.github.assistent.core.Ambient = io.github.assistent.core.Ambient(),
+    fade: Boolean = true,
 ) {
     val u = g.unit
     val sw = u * 0.011f
     // Fade props in/out at the edges of the scene.
-    val alpha = min(prog(t, 0f, 0.5f), 1f - prog(t, sceneSeconds - 0.5f, sceneSeconds))
+    val alpha = if (fade) min(prog(t, 0f, 0.5f), 1f - prog(t, sceneSeconds - 0.5f, sceneSeconds)) else 1f
     if (alpha <= 0.01f) return
     val c = color.copy(alpha = color.alpha * alpha)
     fun stroke(p: Path, w: Float = sw, a: Float = 1f) {
@@ -1332,6 +1333,28 @@ internal object UmbrellaGeo {
     const val TOP_Y = -0.52f
     const val HANDLE_Y = 0.24f
     val rimY get() = TOP_Y + RADIUS * 0.42f
+    val hand get() = Offset(SHAFT_X, HANDLE_Y - 0.03f)
+
+    /** Canopy and its dry shadow, projected along the rain in screen space after the head tilts. */
+    fun rainShelter(cx: Float, cy: Float, unit: Float, tilt: Float, height: Float): Path {
+        val angle = tilt * PI.toFloat() / 180f
+        fun point(x: Float, y: Float): Offset = Offset(
+            cx + unit * (x * cos(angle) - y * sin(angle)),
+            cy + unit * (x * sin(angle) + y * cos(angle)),
+        )
+        val left = point(SHAFT_X - RADIUS, rimY)
+        val right = point(SHAFT_X + RADIUS, rimY)
+        val c1 = point(SHAFT_X - RADIUS, TOP_Y - RADIUS * 0.05f)
+        val c2 = point(SHAFT_X + RADIUS, TOP_Y - RADIUS * 0.05f)
+        val fall = height + abs(cy) + unit * 2f
+        return Path().apply {
+            moveTo(left.x, left.y)
+            cubicTo(c1.x, c1.y, c2.x, c2.y, right.x, right.y)
+            lineTo(right.x - fall * 0.12f, right.y + fall)
+            lineTo(left.x - fall * 0.12f, left.y + fall)
+            close()
+        }
+    }
 }
 
 /** Umbrella held upright by a straight shaft just outside the right eye; drops bounce off the canopy. */

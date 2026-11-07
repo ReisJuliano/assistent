@@ -18,12 +18,15 @@ import io.github.assistent.voice.SpeechPipeline
 import io.github.assistent.sleep.SleepTracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -66,6 +69,8 @@ class AssistantRuntime(
     private var emotionJob: Job? = null
     private var bargeInJob: Job? = null
     private var activeChatJob: Job? = null
+    private var activeListenJob: Deferred<String>? = null
+    private class ListeningCancelled : CancellationException("Listening stopped by touch")
     /** Set by the app graph: listens for the wake phrase / stop words while speaking ("name" barge-in mode). */
     var nameBargeIn: (suspend (List<String>, () -> String) -> String?)? = null
     @Volatile private var bargeStopOnly = false
@@ -160,6 +165,11 @@ class AssistantRuntime(
         val previous = state.value.activity
         state.update { it.copy(activity = a) }
         if (a != Activity.THINKING && a != Activity.SEARCHING) {
+            // Signal end of tool call to emotion engine.
+            if (previous == Activity.SEARCHING || previous == Activity.THINKING) {
+                emotionEngine?.onToolSucceeded()
+                neuralBrain?.sendEvent("tool_success")
+            }
             // A filler that has not started yet is disposable. Once TTS has
             // started, cancelling its job cuts the sentence after a few words.
             if (!waitingLineStarted) {
@@ -169,6 +179,9 @@ class AssistantRuntime(
             }
             return
         }
+        // Signal start of tool call.
+        emotionEngine?.onToolStarted(if (a == Activity.SEARCHING) "web_search" else "thinking")
+        neuralBrain?.sendEvent(if (a == Activity.SEARCHING) "tool_started" else "tool_started")
         if (a == previous && waitingLineJob?.isActive == true && !waitingLineStarted) return
         if (!waitingLineStarted) waitingLineJob?.cancel()
         waitingLineActivity = a
@@ -176,13 +189,22 @@ class AssistantRuntime(
             try {
                 delay(if (a == Activity.SEARCHING) 1_300L else 1_700L)
                 if (state.value.activity != a || waitingLineActivity != a) return@launch
-                val line = Catchphrases.line("thinking_wait", WAITING_LINES)
-                showBubble(line, speak = false, emotion = Emotion.THINKING, keepEmotion = true)
-                // Keep this coroutine alive until the complete filler is
-                // spoken. The response's speaker.speak() will wait on the
-                // Speaker mutex instead of interrupting it.
-                waitingLineStarted = true
-                speaker.speak(line)
+                val engine = emotionEngine
+                if (engine != null && engine.shouldShowHmmBubble()) {
+                    showBubble("Hmm...", speak = false, emotion = Emotion.THINKING, keepEmotion = true)
+                    engine.lastVocalizationMs = System.currentTimeMillis()
+                } else {
+                    val cat = if (a == Activity.SEARCHING) "thinking_wait_search" else "thinking_wait"
+                    val examples = if (a == Activity.SEARCHING) WAITING_LINES_SEARCH else WAITING_LINES
+                    val line = Catchphrases.line(cat, examples)
+                    showBubble(line, speak = false, emotion = Emotion.THINKING, keepEmotion = true)
+                    // Keep this coroutine alive until the complete filler is
+                    // spoken. The response's speaker.speak() will wait on the
+                    // Speaker mutex instead of interrupting it.
+                    waitingLineStarted = true
+                    engine?.let { it.lastVocalizationMs = System.currentTimeMillis() }
+                    speaker.speak(line)
+                }
             } finally {
                 waitingLineStarted = false
                 if (waitingLineActivity == a) {
@@ -334,6 +356,14 @@ class AssistantRuntime(
                 )
                 speechPipeline = pipeline
                 pipeline.start()
+                brain.onToolCall = { toolName, hint ->
+                    val phrase = brain.quickPhrase(hint)
+                        ?: Catchphrases.line("thinking_wait_search", emptyList())
+                    if (!interruptRequested && phrase.isNotBlank()) {
+                        pipeline.submit(phrase)
+                        emotionEngine?.lastVocalizationMs = System.currentTimeMillis()
+                    }
+                }
                 try {
                     val generation = scope.async {
                         brain.askStreaming(text, { if (!startedSpeaking) setActivity(it) }) { delta ->
@@ -369,6 +399,7 @@ class AssistantRuntime(
                     }
                     throw e
                 } finally {
+                    brain.onToolCall = null
                     if (speechPipeline === pipeline) speechPipeline = null
                 }
             } else {
@@ -422,11 +453,24 @@ class AssistantRuntime(
         }
     }
 
-    suspend fun listen(noSpeechTimeoutMs: Long): String {
+    /** Cancels this utterance without queuing another conversation or cancelling the voice service. */
+    fun stopListening() {
+        activeListenJob?.cancel(ListeningCancelled())
+        while (manualTrigger.tryReceive().isSuccess) { /* Discard pending taps. */ }
+        micLevel = 0f
+        state.update { it.copy(activity = Activity.IDLE, partial = "") }
+        touch()
+    }
+
+    suspend fun listen(noSpeechTimeoutMs: Long): String = supervisorScope {
         life.onConversation()
-        setActivity(Activity.LISTENING)
-        return try {
+        val listening = async(start = CoroutineStart.LAZY) {
             listener.listen(noSpeechTimeoutMs, { micLevel = it }, { p -> state.update { it.copy(partial = p) } }).trim()
+        }
+        activeListenJob = listening
+        setActivity(Activity.LISTENING)
+        try {
+            listening.await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -434,6 +478,7 @@ class AssistantRuntime(
             state.update { it.copy(error = "STT: ${e.message}") }
             ""
         } finally {
+            if (activeListenJob === listening) activeListenJob = null
             micLevel = 0f
             if (state.value.activity == Activity.LISTENING) setActivity(Activity.IDLE)
             touch()
@@ -442,8 +487,17 @@ class AssistantRuntime(
 
     /** A full voice exchange: listen (unless the command came with the wake phrase), answer, follow-ups. */
     suspend fun converse(initial: String = "") {
+        try {
+            converseUntilDone(initial)
+        } catch (_: ListeningCancelled) {
+            // A second tap ends this exchange; the service can wait for the next wake phrase/tap.
+        }
+    }
+
+    private suspend fun converseUntilDone(initial: String) {
         wake(greet = false)
         var text = initial.trim().ifBlank { listen(7_000) }
+        if (text.isNotBlank()) { emotionEngine?.onUserSpeech(); neuralBrain?.sendEvent("user_spoke") }
         if (text.isBlank()) {
             setEmotion(Emotion.CONFUSED, 2_000)
             if (state.value.activity == Activity.LISTENING) setActivity(Activity.IDLE)
@@ -499,6 +553,7 @@ class AssistantRuntime(
 
     /** Immediate hard stop for speech, bubbles, life scenes and running operations. */
     fun stopEverything() {
+        activeListenJob?.cancel(ListeningCancelled())
         cancelOperations()
         interruptRequested = true
         speechPipeline?.cancel()
@@ -578,6 +633,12 @@ class AssistantRuntime(
         else setEmotion(t.emotion, 3_000)
         say(t.say, t.emotion)
     }
+
+    /** Set by the app graph: continuous emotion/sentiment state. */
+    var emotionEngine: EmotionEngine? = null
+
+    /** Set by the app graph: PC neural brain client (falls back to emotionEngine when null/disconnected). */
+    var neuralBrain: io.github.assistent.brain.NeuralBrainClient? = null
 
     /** Set by the app graph: personalised reminder lines. */
     var reminderPhrases: ReminderPhrases? = null
@@ -692,6 +753,7 @@ class AssistantRuntime(
         }
         if (g.present && !prev.present) events.emit("face_seen")
         val s = state.value
+        if (g.present) emotionEngine?.onUserSmile(g.smiling)
         if (g.smiling > 0.75f && prev.smiling <= 0.75f && s.activity == Activity.IDLE && s.emotion == Emotion.NEUTRAL) {
             setEmotion(Emotion.HAPPY, 2_500) // smile back
         }
@@ -735,10 +797,16 @@ class AssistantRuntime(
         private val WAITING_LINES = listOf(
             "Hmm, deixa eu ver isso aqui…",
             "Calma aí, essa estava bem no fundo do pensamento.",
-            "Tô pesquisando rapidinho…",
             "Só um segundo, estou juntando as ideias.",
             "Hmmm… achei uma pista. Já te respondo.",
             "Peraí, meu cérebro deu uma voltinha, mas já voltou.",
+        )
+        private val WAITING_LINES_SEARCH = listOf(
+            "Calma aí que tô pesquisando…",
+            "Deixa eu achar isso aqui…",
+            "Tô vendo, um segundo…",
+            "Achando aqui, já já te falo…",
+            "Um instantinho que tô procurando…",
         )
         private val LOW_LIGHT_LINES = listOf(
             "Hmm, a luz está ruim… vou acender meu abajur para ter certeza.",

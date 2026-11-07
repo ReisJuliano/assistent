@@ -130,6 +130,8 @@ class WakeWordEngine(
         onPcm: (ShortArray, Int) -> Unit = { _, _ -> },
         /** True while music plays in the room: song lyrics must not sound like someone calling it. */
         music: () -> Boolean = { false },
+        /** Called with non-wake speech for ambient context buffering. */
+        onHeardText: (String) -> Unit = {},
     ): String =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             val m = ensureModel()
@@ -250,6 +252,7 @@ class WakeWordEngine(
                             onAttention()
                         }
                         if (remainder != null) { lastWakeAudio = snapshot(3f); return@withContext remainder }
+                        if (remainder == null && heard.length > 10) onHeardText(heard)
                         if (attention && System.currentTimeMillis() - attentionAt > 2_500) {
                             attention = false
                             onDismiss()

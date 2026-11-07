@@ -27,8 +27,8 @@ Um robô assistente open source para Android: um rosto animado (olhos e boca) em
 
 ## Gestos
 
-- **Toque**: falar (durante a fala, interrompe)
-- **Toque duplo**: dormir / acordar
+- **Toque**: começar a ouvir; outro toque enquanto ouve cancela a escuta (durante a fala, interrompe)
+- **Três toques rápidos**: dormir
 - **Toque longo**: configurações (as mudanças valem na hora)
 
 ## Começando

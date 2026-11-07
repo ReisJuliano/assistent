@@ -2,11 +2,13 @@ package io.github.assistent.face
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import io.github.assistent.core.Ambient
 import kotlin.math.sin
 
@@ -25,7 +27,7 @@ private fun rnd(i: Int, salt: Int): Float {
 }
 
 /** Weather behind the face: rain streaks, snowflakes, fog bands, lightning. Dim so the face stays the star. */
-internal fun DrawScope.drawWeatherBackground(amb: Ambient, t: Float, color: Color, shelter: androidx.compose.ui.geometry.Rect? = null) {
+internal fun DrawScope.drawWeatherBackground(amb: Ambient, t: Float, color: Color, shelter: Path? = null) {
     val w = size.width
     val h = size.height
     val dim = color.copy(alpha = color.alpha * 0.34f)
@@ -33,15 +35,16 @@ internal fun DrawScope.drawWeatherBackground(amb: Ambient, t: Float, color: Colo
         "rain", "drizzle", "storm" -> {
             val count = when (amb.condition) { "drizzle" -> 35; "storm" -> 110; else -> 75 }
             val len = h * if (amb.condition == "drizzle") 0.025f else 0.045f
-            for (i in 0 until count) {
-                val speed = 0.55f + rnd(i, 1) * 0.5f
-                val x0 = rnd(i, 2) * w * 1.1f
-                val y = ((t * speed + rnd(i, 3)) % 1f) * (h + len) - len
-                val x = x0 - y * 0.12f
-                // Under the umbrella it stays dry.
-                if (shelter != null && x in shelter.left..shelter.right && y + len > shelter.top) continue
-                drawLine(dim, Offset(x, y), Offset(x - len * 0.12f, y + len), h * 0.003f, StrokeCap.Round)
+            val drops: DrawScope.() -> Unit = {
+                for (i in 0 until count) {
+                    val speed = 0.55f + rnd(i, 1) * 0.5f
+                    val x0 = rnd(i, 2) * w * 1.1f
+                    val y = ((t * speed + rnd(i, 3)) % 1f) * (h + len) - len
+                    val x = x0 - y * 0.12f
+                    drawLine(dim, Offset(x, y), Offset(x - len * 0.12f, y + len), h * 0.003f, StrokeCap.Round)
+                }
             }
+            if (shelter != null) clipPath(shelter, ClipOp.Difference) { drops() } else drops()
             if (amb.condition == "storm") {
                 val cycle = t % 7.3f
                 if (cycle < 0.22f) {
@@ -65,7 +68,6 @@ internal fun DrawScope.drawWeatherBackground(amb: Ambient, t: Float, color: Colo
             val speed = 0.06f + rnd(i, 1) * 0.07f
             val y = ((t * speed + rnd(i, 3)) % 1f) * h
             val x = rnd(i, 2) * w + sin(t * (0.6f + rnd(i, 4)) + i) * w * 0.015f
-            if (shelter != null && x in shelter.left..shelter.right && y > shelter.top) continue
             drawCircle(dim.copy(alpha = dim.alpha * 1.4f), h * (0.003f + rnd(i, 5) * 0.004f), Offset(x, y))
         }
         "fog" -> for (i in 0 until 4) {

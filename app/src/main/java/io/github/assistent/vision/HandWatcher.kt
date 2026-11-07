@@ -24,16 +24,16 @@ data class HandSample(val t: Long, val x: Float, val y: Float, val openPalm: Boo
  * Detects a wave: an open palm, raised, going side to side. Pure logic (unit tested) fed by [HandWatcher].
  * Needs at least two direction changes of a real amplitude within [windowMs], mostly with an open palm.
  */
-class WaveDetector(private val windowMs: Long = 2_200, private val minSwing: Float = 0.035f) {
+class WaveDetector(private val windowMs: Long = 2_200, private val minSwing: Float = 0.07f) {
     private val samples = ArrayDeque<HandSample>()
 
     fun push(s: HandSample?, now: Long = s?.t ?: System.currentTimeMillis()): Boolean {
         if (s != null) samples.addLast(s)
         while (samples.isNotEmpty() && now - samples.first().t > windowMs) samples.removeFirst()
-        if (samples.size < 5) return false
+        if (samples.size < 7) return false
         val open = samples.count { it.openPalm } / samples.size.toFloat()
-        val raised = samples.count { it.y < 0.75f } / samples.size.toFloat()
-        if (open < 0.6f || raised < 0.6f) return false
+        val raised = samples.count { it.y < 0.85f } / samples.size.toFloat()
+        if (open < 0.5f || raised < 0.6f) return false
         // Count direction changes of the palm's x, ignoring jitter smaller than minSwing.
         var reversals = 0
         var dir = 0
@@ -131,7 +131,7 @@ class HandWatcher(
                         .setBaseOptions(BaseOptions.builder().setModelAssetBuffer(buffer).build())
                         .setRunningMode(RunningMode.IMAGE)
                         .setNumHands(1)
-                        .setMinHandDetectionConfidence(0.5f)
+                        .setMinHandDetectionConfidence(0.65f)
                         .build(),
                 )
             } catch (e: Exception) {

@@ -7,6 +7,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -72,7 +74,7 @@ class Listener(
                 override fun onResults(results: Bundle?) =
                     finish(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty())
                 override fun onPartialResults(partial: Bundle?) {
-                    partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let(onPartial)
+                    if (cont.isActive) partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let(onPartial)
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
@@ -82,7 +84,10 @@ class Listener(
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, cfg.silenceMs.toLong())
             sr.startListening(intent)
-            cont.invokeOnCancellation { runCatching { sr.cancel(); sr.destroy() } }
+            cont.invokeOnCancellation {
+                // API cancellation can arrive off the UI thread; SpeechRecognizer requires the main thread.
+                Handler(Looper.getMainLooper()).post { runCatching { sr.cancel(); sr.destroy() } }
+            }
         }
     }
 

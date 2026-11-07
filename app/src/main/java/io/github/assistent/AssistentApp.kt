@@ -6,10 +6,13 @@ import io.github.assistent.api.LocalApiServer
 import io.github.assistent.alerts.AlertManager
 import io.github.assistent.brain.Brain
 import io.github.assistent.brain.LlmClient
+import io.github.assistent.brain.NeuralBrainClient
 import io.github.assistent.calendar.CalendarRepository
 import io.github.assistent.companion.CompanionTokenManager
 import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.AssistantRuntime
+import io.github.assistent.core.AmbientBuffer
+import io.github.assistent.core.EmotionEngine
 import io.github.assistent.core.EventDispatcher
 import io.github.assistent.core.Catchphrases
 import io.github.assistent.core.PhrasePool
@@ -91,6 +94,9 @@ class AssistentApp : Application() {
 /** Manual dependency graph: everything is a process-wide singleton. */
 class AppGraph(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val emotionEngine = EmotionEngine(scope)
+    val ambientBuffer = AmbientBuffer()
+    val neuralBrain = NeuralBrainClient(emotionEngine, scope)
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -176,6 +182,26 @@ class AppGraph(context: Context) {
             deviceTool.discoverNow()
         }
         alerts.runtime = runtime
+        runtime.emotionEngine = emotionEngine
+        runtime.life.emotionEngine = emotionEngine
+        runtime.life.ambientBuffer = ambientBuffer
+        runtime.life.onAmbientComment = { ctx ->
+            if (ctx.isNotBlank()) scope.launch {
+                runtime.showBubble("Ouvi uma coisa aí...", speak = true, emotion = io.github.assistent.core.Emotion.THINKING)
+                kotlinx.coroutines.delay(1_500)
+                runtime.manualTrigger.trySend(Unit)
+            }
+        }
+        brain.emotionEngine = emotionEngine
+        brain.ambientBuffer = ambientBuffer
+        runtime.neuralBrain = neuralBrain
+        config.current.llm.neuralServerUrl.takeIf { it.isNotBlank() }?.let { neuralBrain.configure(it) }
+        scope.launch {
+            config.config.collect { cfg ->
+                val url = cfg.llm.neuralServerUrl
+                if (url != neuralBrain.serverUrl) neuralBrain.configure(url)
+            }
+        }
         runtime.reminderPhrases = io.github.assistent.core.ReminderPhrases(config, llm)
         runtime.nameBargeIn = { stops, speakingNow -> wakeWord.awaitBargeIn(stops, speakingNow) }
         reminders.onEscalate = runtime::onReminderEscalation
