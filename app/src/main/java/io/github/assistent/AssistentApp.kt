@@ -33,6 +33,7 @@ import io.github.assistent.lists.ListRepository
 import io.github.assistent.messages.MessageManager
 import io.github.assistent.quiz.QuizRepository
 import io.github.assistent.reminders.ReminderScheduler
+import io.github.assistent.reminders.ReminderWizard
 import io.github.assistent.sleep.SleepTracker
 import io.github.assistent.timers.TimerManager
 import io.github.assistent.tools.CancelReminderTool
@@ -107,6 +108,7 @@ class AppGraph(context: Context) {
     val memory = MemoryRepository(db.memories(), db.people())
     val presence = PresenceTracker(db.people(), scope)
     val reminders = ReminderScheduler(context, db.reminders())
+    val reminderWizard = ReminderWizard(reminders, db.people())
     val timers = TimerManager(context, db.timers(), scope)
     val calendar = CalendarRepository(db.events())
     val messages = MessageManager(db.messages(), db.people(), scope)
@@ -255,6 +257,14 @@ class AppGraph(context: Context) {
         greeter.onKnownPersonSeen = { person ->
             presence.onSeen(person)
             scope.launch { messages.deliverFor(person) }
+            scope.launch {
+                val pending = reminders.listPersonTriggered(person.id)
+                for (r in pending) {
+                    runtime.wake(greet = false)
+                    runtime.say(runtime.reminderLine(r, person.name), io.github.assistent.core.Emotion.HAPPY)
+                    reminders.firePersonTriggered(r)
+                }
+            }
         }
         // Presence is cleared by FaceTracker when no face remains in the frame. A failed
         // embedding while the face is still visible must not erase the current person.

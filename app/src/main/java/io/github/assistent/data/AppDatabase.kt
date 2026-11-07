@@ -47,6 +47,8 @@ data class ReminderEntity(
     val phrase: String = "",
     /** Style hint for the generated line, e.g. "motivacional", "como um pirata". */
     val style: String = "",
+    /** "time" (fires at triggerAt) or "person" (fires when a specific person is seen). */
+    val triggerType: String = "time",
     val lastAckAt: Long? = null,
     val firstFiredAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
@@ -233,6 +235,8 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE active = 1 ORDER BY triggerAt") suspend fun active(): List<ReminderEntity>
     @Query("SELECT * FROM reminders ORDER BY triggerAt DESC LIMIT 200") suspend fun all(): List<ReminderEntity>
     @Query("DELETE FROM reminders WHERE id = :id") suspend fun delete(id: Long): Int
+    @Query("SELECT * FROM reminders WHERE active = 1 AND triggerType = 'person'") suspend fun activePerson(): List<ReminderEntity>
+    @Query("SELECT * FROM reminders WHERE active = 1 AND triggerType = 'person' AND personId = :personId") suspend fun activePersonForPerson(personId: Long): List<ReminderEntity>
 }
 
 @Dao
@@ -327,7 +331,7 @@ interface AlertDao {
         ListEntity::class, ListItemEntity::class, SleepEntity::class, QuizScoreEntity::class, CompanionTokenEntity::class,
         SpeakerProfileEntity::class, AlertEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -433,11 +437,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `reminders` ADD COLUMN `triggerType` TEXT NOT NULL DEFAULT 'time'")
+            }
+        }
+
         fun create(context: Context) =
             Room.databaseBuilder(context, AppDatabase::class.java, "assistent.db")
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
-                    MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+                    MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
                 ).build()
     }
 }

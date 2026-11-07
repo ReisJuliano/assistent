@@ -85,6 +85,28 @@ class ReminderScheduler(private val context: Context, private val dao: ReminderD
 
     suspend fun rescheduleAll() = dao.active().forEach(::schedule)
 
+    /** Creates a reminder that fires when a specific person is next seen (not via AlarmManager). */
+    suspend fun createPersonTriggered(message: String, personName: String, personId: Long? = null): ReminderEntity {
+        val entity = ReminderEntity(
+            message = message,
+            triggerAt = Long.MAX_VALUE / 2,
+            kind = "reminder",
+            type = "person",
+            personId = personId,
+            active = true,
+            triggerType = "person",
+            style = personName,
+        )
+        return entity.copy(id = dao.insert(entity))
+    }
+
+    suspend fun listPersonTriggered(personId: Long? = null): List<ReminderEntity> =
+        if (personId != null) dao.activePersonForPerson(personId) else dao.activePerson()
+
+    suspend fun firePersonTriggered(r: ReminderEntity) {
+        dao.update(r.copy(active = false))
+    }
+
     /** Called when an alarm fires: computes next occurrence or deactivates. */
     suspend fun onFired(r: ReminderEntity) {
         if (r.requireConfirm && r.lastAckAt == null) {
@@ -105,7 +127,7 @@ class ReminderScheduler(private val context: Context, private val dao: ReminderD
     }
 
     fun schedule(r: ReminderEntity) {
-        if (!r.active) return
+        if (!r.active || r.triggerType == "person") return
         val at = maxOf(r.triggerAt, System.currentTimeMillis() + 1000)
         val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms()
         if (canExact) {

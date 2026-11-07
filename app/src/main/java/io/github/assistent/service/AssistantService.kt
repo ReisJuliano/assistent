@@ -104,7 +104,12 @@ class AssistantService : LifecycleService() {
                             runCatching { graph.voiceIdentity.identify(audio) }.getOrNull()?.person?.let { graph.presence.onSeen(it) }
                         }
                     }
-                    runtime.converse(command)
+                    val wizardReply = graph.reminderWizard.tryHandle(command)
+                    if (wizardReply != null) {
+                        runtime.say(wizardReply, io.github.assistent.core.Emotion.HAPPY)
+                    } else {
+                        runtime.converse(command)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
