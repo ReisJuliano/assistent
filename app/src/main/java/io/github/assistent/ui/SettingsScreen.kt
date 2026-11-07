@@ -476,10 +476,14 @@ private fun SettingsList(
                         Button(onClick = { graph.scope.launch { graph.runtime.say("Bip bop! Sistemas online. Eu sou ${cfg.personality.name}, e essa é a minha voz de robô.", Emotion.HAPPY) } }) {
                             Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Testar voz")
                         }
-                        Segmented(listOf("android" to "Sistema", "openai" to "OpenAI / Kokoro", "elevenlabs" to "ElevenLabs", "azure" to "Azure"), cfg.tts.provider) { v ->
+                        Segmented(listOf("android" to "Sistema", "kokoro" to "Kokoro (local)", "openai" to "OpenAI", "elevenlabs" to "ElevenLabs", "azure" to "Azure"), cfg.tts.provider) { v ->
                             up { it.copy(tts = it.tts.copy(provider = v)) }
                         }
                         when (cfg.tts.provider) {
+                            "kokoro" -> {
+                                Hint("Kokoro local no PC (neuro-server). Voz echo60_fenrir40 — pt-BR, sem custo, funciona só na rede local.")
+                                Field("URL do servidor", cfg.tts.kokoroUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(tts = it.tts.copy(kokoroUrl = v.trim())) } }
+                            }
                             "openai" -> {
                                 Hint("OpenAI ou qualquer servidor compatível (/audio/speech), ex. Kokoro-FastAPI local: http://IP:8880/v1, modelo kokoro, voz pf_dora.")
                                 Field("Base URL", cfg.tts.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(tts = it.tts.copy(baseUrl = v.trim())) } }

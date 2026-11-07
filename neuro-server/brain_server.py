@@ -12,8 +12,25 @@ from pathlib import Path
 
 import numpy as np
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel
+
+# ── Kokoro TTS (lazy-loaded on first request) ──────────────────────────────────
+_tts_pipe = None
+_tts_voice = None
+
+def _load_tts():
+    global _tts_pipe, _tts_voice
+    if _tts_pipe is not None:
+        return
+    import torch
+    from kokoro import KPipeline
+    from huggingface_hub import hf_hub_download
+    v_echo   = torch.load(hf_hub_download('hexgrad/Kokoro-82M', 'voices/am_echo.pt'),   weights_only=True)
+    v_fenrir = torch.load(hf_hub_download('hexgrad/Kokoro-82M', 'voices/am_fenrir.pt'), weights_only=True)
+    _tts_voice = v_echo * 0.60 + v_fenrir * 0.40
+    _tts_pipe  = KPipeline(lang_code='p', repo_id='hexgrad/Kokoro-82M')
+    print("Kokoro TTS ready (echo60_fenrir40).")
 
 # ── ESN parameters ────────────────────────────────────────────────────────────
 N_RESERVOIR = 300
@@ -167,6 +184,25 @@ def get_thought():
     s = read_state()
     category, intensity = thought_category(s)
     return {"category": category, "intensity": intensity}
+
+
+class TtsRequest(BaseModel):
+    text: str
+    speed: float = 1.0
+
+@app.post("/tts")
+def post_tts(req: TtsRequest):
+    """Synthesise text with the Kokoro echo60_fenrir40 voice. Returns raw 24kHz 16-bit mono PCM."""
+    _load_tts()
+    import numpy as _np
+    chunks = []
+    for _, _, audio in _tts_pipe(req.text, voice=_tts_voice, speed=req.speed):
+        chunks.append(audio)
+    if not chunks:
+        return Response(content=b"", media_type="audio/pcm")
+    pcm_f32 = _np.concatenate(chunks)
+    pcm_i16 = (pcm_f32 * 32767).clip(-32768, 32767).astype(_np.int16)
+    return Response(content=pcm_i16.tobytes(), media_type="audio/pcm")
 
 
 @app.get("/dream")

@@ -65,6 +65,7 @@ class Speaker(
                 "openai" -> openAi(spokenText, cfg)
                 "elevenlabs" -> elevenLabs(spokenText, cfg)
                 "azure" -> azure(spokenText, cfg)
+                "kokoro" -> kokoro(spokenText, cfg)
                 else -> androidTts(spokenText, cfg)
             }
         }
@@ -97,6 +98,16 @@ class Speaker(
             .url("https://api.elevenlabs.io/v1/text-to-speech/${cfg.elevenLabsVoiceId}/stream?output_format=pcm_24000")
             .header("xi-api-key", cfg.apiKey)
             .post(body.toString().toRequestBody(EventDispatcher.JSON)).build()
+        return fetch(req, 24_000)
+    }
+
+    /** Kokoro TTS running on the neuro-server PC — raw 24 kHz 16-bit mono PCM. Free, local. */
+    private suspend fun kokoro(text: String, cfg: TtsConfig): Pair<ByteArray, Int> {
+        val body = """{"text":${kotlinx.serialization.json.Json.encodeToString(text)},"speed":${cfg.speed}}"""
+        val req = Request.Builder()
+            .url(cfg.kokoroUrl.trimEnd('/') + "/tts")
+            .post(body.toRequestBody(EventDispatcher.JSON))
+            .build()
         return fetch(req, 24_000)
     }
 

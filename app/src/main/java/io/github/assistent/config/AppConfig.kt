@@ -163,6 +163,8 @@ data class TtsConfig(
     val azureRegion: String = "eastus",
     /** Azure TTS voice name, e.g. "pt-BR-FabioNeural" (masculine) or "pt-BR-AntonioNeural". */
     val azureVoice: String = "pt-BR-FabioNeural",
+    /** Kokoro TTS: URL of the neuro-server /tts endpoint, e.g. "http://192.168.1.x:8766". */
+    val kokoroUrl: String = "",
 )
 
 @Serializable
