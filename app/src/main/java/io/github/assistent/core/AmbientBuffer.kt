@@ -7,11 +7,15 @@ class AmbientBuffer {
 
     data class Entry(val text: String, val speaker: String?, val timestampMs: Long)
 
+    /** Called with significant phrases (>50 chars) for permanent memory saving. */
+    var onSignificant: ((String) -> Unit)? = null
+
     @Synchronized
     fun add(text: String, speaker: String? = null) {
         val now = System.currentTimeMillis()
         entries.addLast(Entry(text, speaker, now))
         while (entries.isNotEmpty() && now - entries.first().timestampMs > windowMs) entries.removeFirst()
+        if (text.length > 50) onSignificant?.invoke(text)
     }
 
     @Synchronized

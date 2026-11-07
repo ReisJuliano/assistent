@@ -13,6 +13,7 @@ import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.AssistantRuntime
 import io.github.assistent.core.AmbientBuffer
 import io.github.assistent.core.EmotionEngine
+import io.github.assistent.core.ProactiveCache
 import io.github.assistent.core.EventDispatcher
 import io.github.assistent.core.Catchphrases
 import io.github.assistent.core.PhrasePool
@@ -98,6 +99,7 @@ class AppGraph(context: Context) {
     val emotionEngine = EmotionEngine(scope)
     val ambientBuffer = AmbientBuffer()
     val neuralBrain = NeuralBrainClient(emotionEngine, scope)
+    val proactiveCache by lazy { ProactiveCache(memory, config, http, ambientBuffer, scope) }
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -197,6 +199,11 @@ class AppGraph(context: Context) {
         brain.emotionEngine = emotionEngine
         brain.ambientBuffer = ambientBuffer
         runtime.neuralBrain = neuralBrain
+        // Save significant ambient phrases to long-term memory for future recall.
+        ambientBuffer.onSignificant = { text ->
+            scope.launch { memory.add(text, tags = "ambient ouvido", source = "ambient", share = false) }
+        }
+        proactiveCache.start()
         config.current.llm.neuralServerUrl.takeIf { it.isNotBlank() }?.let { neuralBrain.configure(it) }
         scope.launch {
             config.config.collect { cfg ->
