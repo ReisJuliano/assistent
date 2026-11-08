@@ -43,3 +43,8 @@ vosk-model-*/
 
 # Loose screenshots from development sessions (keep curated ones under docs/)
 /*.png
+
+# Neuro-server runtime state
+neuro-server/__pycache__/
+neuro-server/brain_state.json
+neuro-server/voice_samples/
