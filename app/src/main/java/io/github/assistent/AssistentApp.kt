@@ -198,6 +198,15 @@ class AppGraph(context: Context) {
         }
         brain.emotionEngine = emotionEngine
         brain.ambientBuffer = ambientBuffer
+        brain.coroutineScope = scope
+        proactiveCache.calendarSource = {
+            val events = calendar.upcoming(3)
+            if (events.isEmpty()) null
+            else {
+                val fmt = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.forLanguageTag("pt-BR"))
+                "Próximos compromissos: " + events.joinToString("; ") { "${it.title} em ${fmt.format(java.util.Date(it.startAt))}" }
+            }
+        }
         runtime.neuralBrain = neuralBrain
         runtime.life.onDreamBubble = { moodHint -> brain.dreamPhrase(moodHint) }
         // Save significant ambient phrases to long-term memory for future recall.

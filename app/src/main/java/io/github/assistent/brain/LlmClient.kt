@@ -10,6 +10,12 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -28,6 +34,8 @@ data class ChatMessage(
     val content: String? = null,
     @SerialName("tool_calls") val toolCalls: List<ToolCall>? = null,
     @SerialName("tool_call_id") val toolCallId: String? = null,
+    /** Base64-encoded JPEG for vision queries; not serialized — handled by LlmClient directly. */
+    @Transient val imageBase64: String? = null,
 )
 
 @Serializable
@@ -45,7 +53,7 @@ data class FunctionSpec(val name: String, val description: String, val parameter
 @Serializable
 private data class ChatRequest(
     val model: String,
-    val messages: List<ChatMessage>,
+    val messages: List<JsonElement>,
     val tools: List<ToolSpec>? = null,
     val stream: Boolean = false,
     @SerialName("reasoning_effort") val reasoningEffort: String? = null,
@@ -108,7 +116,7 @@ class LlmClient(private val http: OkHttpClient) {
             LlmQuota.check()
             val body = AppJson.encodeToString(
                 ChatRequest.serializer(),
-                ChatRequest(cfg.model, messages, tools.ifEmpty { null }, reasoningEffort = cfg.reasoningEffort.ifBlank { null }),
+                ChatRequest(cfg.model, messages.map(::chatMessageToJson), tools.ifEmpty { null }, reasoningEffort = cfg.reasoningEffort.ifBlank { null }),
             )
             val req = Request.Builder()
                 .url(cfg.baseUrl.trimEnd('/') + "/chat/completions")
@@ -134,7 +142,7 @@ class LlmClient(private val http: OkHttpClient) {
         LlmQuota.check()
         val body = AppJson.encodeToString(
             ChatRequest.serializer(),
-            ChatRequest(cfg.model, messages, tools.ifEmpty { null }, stream = true, reasoningEffort = cfg.reasoningEffort.ifBlank { null }),
+            ChatRequest(cfg.model, messages.map(::chatMessageToJson), tools.ifEmpty { null }, stream = true, reasoningEffort = cfg.reasoningEffort.ifBlank { null }),
         )
         val req = Request.Builder()
             .url(cfg.baseUrl.trimEnd('/') + "/chat/completions")
@@ -184,6 +192,25 @@ class LlmClient(private val http: OkHttpClient) {
 
     private fun client(cfg: LlmConfig) =
         http.newBuilder().readTimeout(cfg.timeoutSeconds.toLong(), TimeUnit.SECONDS).build()
+
+    /** Converts a ChatMessage to JsonElement, using the vision content format when imageBase64 is set. */
+    private fun chatMessageToJson(msg: ChatMessage): JsonElement {
+        val img = msg.imageBase64
+        return if (img != null && msg.role == "user") {
+            buildJsonObject {
+                put("role", msg.role)
+                put("content", buildJsonArray {
+                    add(buildJsonObject { put("type", "text"); put("text", msg.content ?: "") })
+                    add(buildJsonObject {
+                        put("type", "image_url")
+                        put("image_url", buildJsonObject { put("url", "data:image/jpeg;base64,$img") })
+                    })
+                })
+            }
+        } else {
+            AppJson.encodeToJsonElement(ChatMessage.serializer(), msg)
+        }
+    }
 
     private fun mergeToolCall(element: JsonElement, calls: MutableMap<Int, ToolCallBuilder>) {
         val obj = element.jsonObject

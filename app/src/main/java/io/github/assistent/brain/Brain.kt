@@ -10,9 +10,11 @@ import io.github.assistent.core.Emotion
 import io.github.assistent.core.PresenceTracker
 import io.github.assistent.data.MemoryRepository
 import io.github.assistent.tools.ToolRegistry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -41,10 +43,13 @@ class Brain(
     private val history = ArrayDeque<ChatMessage>()
     private val lock = Mutex()
     @Volatile private var interruptedReply: InterruptedReply? = null
+    @Volatile private var isSummarizing = false
 
     /** Set by AppGraph after construction. */
     var emotionEngine: EmotionEngine? = null
     var ambientBuffer: AmbientBuffer? = null
+    /** Set by AppGraph: needed for background history summarization. */
+    var coroutineScope: kotlinx.coroutines.CoroutineScope? = null
     /** Set by AssistantRuntime per turn; fired when the first tool call of a round is detected. */
     var onToolCall: (suspend (toolName: String, queryHint: String) -> Unit)? = null
 
@@ -114,7 +119,8 @@ class Brain(
             appendLine("Assistente: $assistantText")
         }
         val raw = runCatching { llm.complete(cfg.llm, listOf(ChatMessage("user", prompt)), emptyList()).content.orEmpty() }.getOrNull() ?: return
-        val arr = runCatching { AppJson.parseToJsonElement(raw.substringAfter('[').substringBeforeLast(']').let { "[$it]" }).jsonArray }.getOrNull() ?: return
+        val jsonStr = findJsonArray(raw) ?: return
+        val arr = runCatching { AppJson.parseToJsonElement(jsonStr).jsonArray }.getOrNull() ?: return
         for (item in arr) {
             val obj = item.jsonObject
             val fact = obj["fact"]?.jsonPrimitive?.content?.trim().orEmpty()
@@ -126,19 +132,19 @@ class Brain(
         }
     }
 
-    suspend fun ask(userText: String, onActivity: (Activity) -> Unit = {}): Reply = lock.withLock {
-        askLocked(userText, onActivity, onText = null)
+    suspend fun ask(userText: String, userImage: String? = null, onActivity: (Activity) -> Unit = {}): Reply = lock.withLock {
+        askLocked(userText, userImage, onActivity, onText = null)
     }
 
-    suspend fun askStreaming(userText: String, onActivity: (Activity) -> Unit = {}, onText: suspend (String) -> Unit): Reply = lock.withLock {
-        askLocked(userText, onActivity, onText)
+    suspend fun askStreaming(userText: String, userImage: String? = null, onActivity: (Activity) -> Unit = {}, onText: suspend (String) -> Unit): Reply = lock.withLock {
+        askLocked(userText, userImage, onActivity, onText)
     }
 
-    private suspend fun askLocked(userText: String, onActivity: (Activity) -> Unit, onText: (suspend (String) -> Unit)?): Reply {
+    private suspend fun askLocked(userText: String, userImage: String?, onActivity: (Activity) -> Unit, onText: (suspend (String) -> Unit)?): Reply {
         val cfg = config.current
         val messages = mutableListOf(ChatMessage("system", systemPrompt()))
         messages += history
-        val user = ChatMessage("user", userText)
+        val user = ChatMessage("user", userText, imageBase64 = userImage)
         messages += user
         val turn = mutableListOf(user)
         val used = mutableListOf<String>()
@@ -219,7 +225,11 @@ class Brain(
         val rawForParsing = if (userEmotionMatch != null) rawContent.replace(USER_EMOTION_RE, "") else rawContent
         userEmotionMatch?.groupValues?.get(1)?.let { emotionEngine?.onUserEmotionTag(it) }
         val (emotion, parsedText) = parseEmotion(rawForParsing)
-        val asksReminder = userText.lowercase().let { it.contains("lembrete") || it.contains("me lembre") || it.contains("alarme") }
+        val tl = userText.lowercase()
+        val cancelIntent = tl.contains("cancel") || tl.contains("apaga") || tl.contains("remove") ||
+            tl.contains("deleta") || tl.contains("exclu") || tl.contains("lista")
+        val asksReminder = !cancelIntent && (tl.contains("lembrete") || tl.contains("me lembre") || tl.contains("alarme"))
+        // kept name 'asksReminder' so the if-branch below still compiles unchanged
         val actionFailed = actionOutcome.values.any { !it }
         val text = if (actionFailed && !admitsFailure(parsedText)) {
             "N\u00e3o consegui concluir essa a\u00e7\u00e3o. N\u00e3o vou fingir que ela foi realizada."
@@ -233,6 +243,30 @@ class Brain(
 
     private fun remember(turn: List<ChatMessage>, max: Int) {
         history.addAll(turn)
+        // Background summarization: compress the oldest quarter when approaching max capacity.
+        val scope = coroutineScope
+        if (scope != null && !isSummarizing && history.size > (max * 0.75).toInt()) {
+            val slice = history.take(history.size / 4).filter { it.role !in listOf("tool", "system") }
+            if (slice.isNotEmpty()) {
+                isSummarizing = true
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val prompt = "Resuma esta parte da conversa em 2-3 frases em português:\n" +
+                            slice.joinToString("\n") { "[${it.role}] ${it.content.orEmpty().take(300)}" }
+                        val summary = runCatching {
+                            llm.complete(config.current.llm, listOf(ChatMessage("user", prompt)), emptyList()).content?.trim()
+                        }.getOrNull()
+                        if (!summary.isNullOrBlank()) {
+                            lock.withLock {
+                                val trimSize = history.size / 4
+                                repeat(trimSize) { if (history.isNotEmpty()) history.removeFirst() }
+                                history.addFirst(ChatMessage("system", "Resumo de conversa anterior: $summary"))
+                            }
+                        }
+                    } finally { isSummarizing = false }
+                }
+            }
+        }
         // Drop oldest whole turns (never leave a tool message without its call).
         while (history.size > max) {
             history.removeFirst()
@@ -366,6 +400,26 @@ class Brain(
             if (tone == "custom" && custom.isNotBlank()) custom else TONES[tone] ?: TONES.getValue("natural")
         private val TAG_RE = Regex("\\[(\\w+)]")
         private val USER_EMOTION_RE = Regex("""\[user_emotion:(\w+)\]""")
+
+        /** Finds the first balanced JSON array in [raw], handling markdown fences and surrounding commentary. */
+        fun findJsonArray(raw: String): String? {
+            val start = raw.indexOf('[')
+            if (start < 0) return null
+            var depth = 0
+            var inString = false
+            var escape = false
+            for (i in start until raw.length) {
+                val c = raw[i]
+                when {
+                    escape -> escape = false
+                    c == '\\' && inString -> escape = true
+                    c == '"' -> inString = !inString
+                    !inString && c == '[' -> depth++
+                    !inString && c == ']' -> { depth--; if (depth == 0) return raw.substring(start, i + 1) }
+                }
+            }
+            return null
+        }
 
         /** Extracts the leading `[emotion]` tag and strips any tags/markdown left in the text. */
         fun parseEmotion(raw: String): Pair<Emotion, String> {

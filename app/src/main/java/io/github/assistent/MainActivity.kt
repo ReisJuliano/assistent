@@ -173,6 +173,9 @@ class MainActivity : ComponentActivity() {
                 mimic = config.life.enabled && config.life.mimic,
                 // Speech bubbles are not waves. The actual WAVE_BACK scene owns the arm gesture.
                 waving = false,
+                emotionModifier = graph.runtime.emotionEngine?.let { eng ->
+                    { Triple(eng.robotCuriosity, eng.robotBoredom, eng.robotAnxiety) }
+                },
                 modifier = Modifier.pointerInput(Unit) {
                     // Petting (slow strokes) and tickling (fast scribbles) on the face.
                     var start = 0L

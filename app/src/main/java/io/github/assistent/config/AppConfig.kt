@@ -183,6 +183,8 @@ data class WakeConfig(
     val sleepAfterSeconds: Int = 600,
     /** After answering, keep listening this long without needing the wake phrase. 0 disables. */
     val followUpSeconds: Int = 6,
+    val goodbyeWords: List<String> = listOf("boa noite", "vai dormir", "durma"),
+    val stopWords: List<String> = listOf("parar", "pare", "para tudo", "pare tudo", "silêncio", "silencio"),
 )
 
 @Serializable

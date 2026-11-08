@@ -29,9 +29,14 @@ class ProactiveCache(
 ) {
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.forLanguageTag("pt-BR"))
 
+    /** Supplies upcoming calendar events as a string; set by AssistentApp. */
+    var calendarSource: (suspend () -> String?)? = null
+
     fun start() {
         scope.launch(Dispatchers.IO) { brlLoop() }
         scope.launch(Dispatchers.IO) { uvLoop() }
+        scope.launch(Dispatchers.IO) { weatherSummaryLoop() }
+        scope.launch(Dispatchers.IO) { calendarLoop() }
     }
 
     // ── BRL/USD ──────────────────────────────────────────────────────────────
@@ -90,6 +95,60 @@ class ProactiveCache(
         }
         val text = "Índice UV máximo em $place: %.0f ($level) — %s".format(uv, timeFmt.format(Date()))
         saveOrUpdate(text, "uv sol protetor solar radiação")
+    }
+
+    // ── Current weather summary ───────────────────────────────────────────────
+
+    private suspend fun weatherSummaryLoop() {
+        while (true) {
+            val place = config.current.weather.defaultLocation
+            if (place.isNotBlank()) {
+                runCatching { fetchWeatherSummary(place) }.onFailure { Log.w(TAG, "weather summary: ${it.message}") }
+            }
+            delay(intervalMs("tempo clima chuva", 30 * 60_000L, 10 * 60_000L))
+        }
+    }
+
+    private suspend fun fetchWeatherSummary(place: String) {
+        val geo = get("https://geocoding-api.open-meteo.com/v1/search?name=${encode(place)}&count=1")
+        val r = JSONObject(geo).optJSONArray("results")?.optJSONObject(0) ?: return
+        val lat = r.optDouble("latitude"); val lon = r.optDouble("longitude")
+        if (lat.isNaN() || lon.isNaN()) return
+        val forecast = get(
+            "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto",
+        )
+        val cur = JSONObject(forecast).optJSONObject("current") ?: return
+        val temp = cur.optDouble("temperature_2m")
+        val humidity = cur.optDouble("relative_humidity_2m")
+        val wind = cur.optDouble("wind_speed_10m")
+        val code = cur.optInt("weather_code", -1)
+        val desc = weatherCodeDescription(code)
+        val text = "Clima atual em $place: ${"%.0f".format(temp)}°C, $desc, umidade ${"%.0f".format(humidity)}%, vento ${"%.0f".format(wind)} km/h (${timeFmt.format(Date())})"
+        saveOrUpdate(text, "tempo clima temperatura chuva")
+    }
+
+    private fun weatherCodeDescription(code: Int) = when (code) {
+        0 -> "céu limpo"; 1, 2, 3 -> "parcialmente nublado"
+        45, 48 -> "neblina"; 51, 53, 55 -> "garoa"
+        61, 63, 65 -> "chuva"; 71, 73, 75 -> "neve"
+        80, 81, 82 -> "pancadas de chuva"; 95, 96, 99 -> "tempestade"
+        else -> "condição desconhecida"
+    }
+
+    // ── Calendar ──────────────────────────────────────────────────────────────
+
+    private suspend fun calendarLoop() {
+        while (true) {
+            val source = calendarSource
+            if (source != null) {
+                runCatching {
+                    val text = source()
+                    if (!text.isNullOrBlank()) saveOrUpdate(text, "agenda evento compromisso reunião")
+                }.onFailure { Log.w(TAG, "calendar fetch: ${it.message}") }
+            }
+            delay(intervalMs("agenda evento reunião", 15 * 60_000L, 5 * 60_000L))
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -62,6 +62,9 @@ class AssistantRuntime(
     @Volatile private var sleepAfterReply = false
     @Volatile private var interruptRequested = false
     @Volatile var cameraBrightness: Float = 255f
+    @Volatile private var lastAutoRememberMs = 0L
+    /** Supplies a camera frame for vision queries; null = no camera or frame unavailable. */
+    var cameraFrameSource: (() -> ByteArray?)? = null
     private val spokenReply = StringBuilder()
     private val generatedReply = StringBuilder()
     private var currentReplyText = ""
@@ -181,7 +184,7 @@ class AssistantRuntime(
         }
         // Signal start of tool call.
         emotionEngine?.onToolStarted(if (a == Activity.SEARCHING) "web_search" else "thinking")
-        neuralBrain?.sendEvent(if (a == Activity.SEARCHING) "tool_started" else "tool_started")
+        neuralBrain?.sendEvent(if (a == Activity.SEARCHING) "tool_started" else "thinking_started")
         if (a == previous && waitingLineJob?.isActive == true && !waitingLineStarted) return
         if (!waitingLineStarted) waitingLineJob?.cancel()
         waitingLineActivity = a
@@ -313,6 +316,10 @@ class AssistantRuntime(
         life.onConversation()
         state.update { it.copy(lastHeard = text, partial = "", error = null) }
         events.emit("user_said", JsonPrimitive(text))
+        val tl = text.lowercase()
+        val imageBase64: String? = if (VISUAL_KEYWORDS.any { tl.contains(it) }) {
+            cameraFrameSource?.invoke()?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+        } else null
         if (speak && cameraBrightness < 28f && isIdentityQuestion(text)) {
             val line = Catchphrases.line("low_light_identity", LOW_LIGHT_LINES)
             showBubble(line, speak = false, emotion = Emotion.CONFUSED)
@@ -368,7 +375,7 @@ class AssistantRuntime(
                 }
                 try {
                     val generation = scope.async {
-                        brain.askStreaming(text, { if (!startedSpeaking) setActivity(it) }) { delta ->
+                        brain.askStreaming(text, userImage = imageBase64, onActivity = { if (!startedSpeaking) setActivity(it) }) { delta ->
                             if (firstTokenAt == 0L) firstTokenAt = System.currentTimeMillis()
                             generatedReply.append(delta)
                             for (sentence in splitter.push(delta)) {
@@ -405,7 +412,7 @@ class AssistantRuntime(
                     if (speechPipeline === pipeline) speechPipeline = null
                 }
             } else {
-                brain.ask(text) { setActivity(it) }
+                brain.ask(text, userImage = imageBase64, onActivity = { setActivity(it) })
             }
         } catch (e: CancellationException) {
             throw e
@@ -428,7 +435,13 @@ class AssistantRuntime(
             put("tools", kotlinx.serialization.json.JsonArray(reply.toolsUsed.map(::JsonPrimitive)))
         })
         if (speak && !spokeDuringStreaming && !interruptRequested) say(reply.text) else setActivity(Activity.IDLE)
-        scope.launch { brain.autoRemember(text, reply.text) }
+        val nowMs = System.currentTimeMillis()
+        if (text.length >= 20 || reply.text.length >= 40) {
+            if (nowMs - lastAutoRememberMs > 30_000L) {
+                lastAutoRememberMs = nowMs
+                scope.launch { brain.autoRemember(text, reply.text) }
+            }
+        }
         stopBargeIn()
         activeChatJob = null
         if (sleepAfterReply) { sleepAfterReply = false; sleep() }
@@ -542,12 +555,12 @@ class AssistantRuntime(
 
     private fun isGoodNight(text: String): Boolean {
         val t = text.lowercase().replace(Regex("[^a-záéíóúãõç ]"), " ").replace(Regex("\\s+"), " ").trim()
-        return t.contains("boa noite") || t.contains("vai dormir") || t == "durma"
+        return config.current.wake.goodbyeWords.any { t.contains(it) }
     }
 
     private fun isStop(text: String): Boolean {
         val t = text.lowercase().replace(Regex("[^a-záéíóúãõç ]"), " ").replace(Regex("\\s+"), " ").trim()
-        return t == "parar" || t == "pare" || t == "para tudo" || t == "pare tudo" || t == "silêncio" || t == "silencio"
+        return config.current.wake.stopWords.any { t == it }
     }
 
     /** Set by the app graph: cancels every running tool operation. */
@@ -796,6 +809,11 @@ class AssistantRuntime(
 
     companion object {
         private const val TAG = "Runtime"
+        private val VISUAL_KEYWORDS = listOf(
+            "o que você vê", "o que está vendo", "quem é", "quem está", "o que é isso",
+            "descreve", "descreva", "olha aqui", "olha isso", "o que tem aqui",
+            "reconhece", "vê alguém", "vê algo", "mostra", "o que aparece",
+        )
         private val WAITING_LINES = listOf(
             "Hmm, deixa eu ver isso aqui…",
             "Calma aí, essa estava bem no fundo do pensamento.",

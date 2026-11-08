@@ -72,6 +72,8 @@ fun RobotFace(
     /** Slides the face by a fraction of the screen (e.g. -0.22 to the left when a game panel is on the right). */
     shiftX: Float = 0f,
     shiftY: Float = 0f,
+    /** Returns (curiosity, boredom, anxiety) 0..1 from EmotionEngine; applied each frame to shape brows/eyelids. */
+    emotionModifier: (() -> Triple<Float, Float, Float>)? = null,
 ) {
     val animator = remember { FaceAnimator() }
     val baseColor = remember(face.color) { parseHexColor(face.color) }
@@ -87,6 +89,7 @@ fun RobotFace(
     val gazeState = rememberUpdatedState(gaze)
     val faceState = rememberUpdatedState(face)
     val levelState = rememberUpdatedState(audioLevel)
+    val emotionModifierState = rememberUpdatedState(emotionModifier)
     var tick by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(animator) {
@@ -111,6 +114,17 @@ fun RobotFace(
                         // A small, slow brow asymmetry makes listening feel curious rather than frozen.
                         it.copy(browAsym = sin(animator.time * 1.35f) * 0.16f, browAngle = -3f)
                     } else it
+                }.let { p ->
+                    val mod = emotionModifierState.value?.invoke()
+                    if (mod != null && act == Activity.IDLE) {
+                        val (curiosity, boredom, anxiety) = mod
+                        val eyeMod = { eye: EyeShape -> eye.copy(height = eye.height * (1f - anxiety * 0.3f) * (1f - boredom * 0.25f)) }
+                        p.copy(
+                            browRaise = p.browRaise + curiosity * 0.3f - boredom * 0.15f,
+                            left = eyeMod(p.left),
+                            right = eyeMod(p.right),
+                        )
+                    } else p
                 }
                 // Life scenes play on top of the current state: hobbies only while idle, dreams only while
                 // sleeping, wake-up reactions while awake (they may overlap the start of listening).
