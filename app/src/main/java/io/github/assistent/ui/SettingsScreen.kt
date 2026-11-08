@@ -535,11 +535,14 @@ private fun SettingsList(
                 }
                 item {
                     Section("Reconhecimento de fala") {
-                        Segmented(listOf("android" to "Sistema", "openai" to "Whisper API"), cfg.stt.provider) { v -> up { it.copy(stt = it.stt.copy(provider = v)) } }
-                        if (cfg.stt.provider == "openai") {
-                            Field("Base URL", cfg.stt.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(stt = it.stt.copy(baseUrl = v.trim())) } }
-                            Field("API key", cfg.stt.apiKey, secret = true) { v -> up { it.copy(stt = it.stt.copy(apiKey = v.trim())) } }
-                            Field("Modelo", cfg.stt.model) { v -> up { it.copy(stt = it.stt.copy(model = v.trim())) } }
+                        Segmented(listOf("android" to "Sistema", "whisper-local" to "Whisper local", "openai" to "Whisper API"), cfg.stt.provider) { v -> up { it.copy(stt = it.stt.copy(provider = v)) } }
+                        when (cfg.stt.provider) {
+                            "whisper-local" -> Hint("faster-whisper large-v3-turbo no PC (neuro-server). Usa a URL configurada em IA → Servidor neural. GPU recomendada.")
+                            "openai" -> {
+                                Field("Base URL", cfg.stt.baseUrl, keyboard = KeyboardType.Uri) { v -> up { it.copy(stt = it.stt.copy(baseUrl = v.trim())) } }
+                                Field("API key", cfg.stt.apiKey, secret = true) { v -> up { it.copy(stt = it.stt.copy(apiKey = v.trim())) } }
+                                Field("Modelo", cfg.stt.model) { v -> up { it.copy(stt = it.stt.copy(model = v.trim())) } }
+                            }
                         }
                         SliderRow("Silêncio para encerrar (ms)", cfg.stt.silenceMs.toFloat(), 500f..3000f, format = { "${it.roundToInt()}" }) { v ->
                             up { it.copy(stt = it.stt.copy(silenceMs = v.roundToInt())) }

@@ -46,6 +46,7 @@ class Listener(
         val cfg = config.current.stt
         return when (cfg.provider) {
             "openai" -> whisper(cfg, noSpeechTimeoutMs, onLevel)
+            "whisper-local" -> whisperLocal(cfg, noSpeechTimeoutMs, onLevel)
             else -> kotlinx.coroutines.withTimeoutOrNull(noSpeechTimeoutMs + cfg.maxSeconds * 1000L + 5_000) {
                 androidRecognizer(cfg, noSpeechTimeoutMs, onLevel, onPartial)
             } ?: ""
@@ -114,6 +115,29 @@ class Listener(
             AppJson.parseToJsonElement(text).jsonObject["text"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty().trim()
         }
     }
+
+    /** Whisper via neuro-server /transcribe (faster-whisper large-v3-turbo on GPU). */
+    @SuppressLint("MissingPermission")
+    private suspend fun whisperLocal(cfg: SttConfig, timeoutMs: Long, onLevel: (Float) -> Unit): String =
+        withContext(Dispatchers.IO) {
+            val neuralUrl = config.current.llm.neuralServerUrl.trimEnd('/')
+            if (neuralUrl.isBlank()) return@withContext androidRecognizer(cfg, timeoutMs, onLevel) { }
+            val rate = 16_000
+            val pcm = recordUtterance(rate, timeoutMs, cfg.silenceMs.toLong(), cfg.maxSeconds * 1000L, onLevel)
+                ?: return@withContext ""
+            val wavBytes = wav(pcm, rate)
+            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("language", cfg.language)
+                .addFormDataPart("file", "speech.wav", wavBytes.toRequestBody("audio/wav".toMediaType()))
+                .build()
+            val req = Request.Builder().url("$neuralUrl/transcribe").post(body).build()
+            http.newCall(req).execute().use { res ->
+                val text = res.body?.string().orEmpty()
+                if (!res.isSuccessful) return@use ""
+                AppJson.parseToJsonElement(text).jsonObject["text"]
+                    ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty().trim()
+            }
+        }
 
     /** Energy-based VAD: waits for speech, stops after [silenceMs] of quiet. Null if nobody spoke. */
     @SuppressLint("MissingPermission")

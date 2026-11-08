@@ -15,6 +15,18 @@ import uvicorn
 from fastapi import FastAPI, Response
 from pydantic import BaseModel
 
+# ── faster-whisper STT (lazy-loaded on first request) ─────────────────────────
+_stt_model = None
+
+def _load_stt():
+    global _stt_model
+    if _stt_model is not None:
+        return
+    from faster_whisper import WhisperModel
+    # large-v3-turbo: best quality, ~3 GB VRAM — fits GTX 1060 6GB alongside Kokoro
+    _stt_model = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+    print("faster-whisper STT ready (large-v3-turbo, CUDA).")
+
 # ── Kokoro TTS (lazy-loaded on first request) ──────────────────────────────────
 _tts_pipe = None
 _tts_voice = None
@@ -189,6 +201,33 @@ def get_thought():
 class TtsRequest(BaseModel):
     text: str
     speed: float = 1.0
+
+
+from fastapi import UploadFile, File
+
+@app.post("/transcribe")
+async def post_transcribe(
+    file: UploadFile = File(...),
+    language: str = "pt",
+    task: str = "transcribe",   # "transcribe" or "translate"
+):
+    """Transcribe audio (WAV/PCM/OGG/MP4) using faster-whisper large-v3-turbo on GPU."""
+    import tempfile, os
+    _load_stt()
+    data = await file.read()
+    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = tmp.name
+    try:
+        segments, info = _stt_model.transcribe(
+            tmp_path, language=language, task=task,
+            beam_size=5, vad_filter=True, vad_parameters={"min_silence_duration_ms": 300},
+        )
+        text = " ".join(s.text.strip() for s in segments).strip()
+        return {"text": text, "language": info.language, "duration": round(info.duration, 2)}
+    finally:
+        os.unlink(tmp_path)
 
 @app.post("/tts")
 def post_tts(req: TtsRequest):
