@@ -53,8 +53,10 @@ import io.github.assistent.tools.ListAddTool
 import io.github.assistent.tools.ListCheckTool
 import io.github.assistent.tools.ListRemoveTool
 import io.github.assistent.tools.ListShowTool
+import io.github.assistent.tools.DeleteMessageTool
 import io.github.assistent.tools.LeaveMessageTool
 import io.github.assistent.tools.RegisterFaceTool
+import io.github.assistent.tools.SetPersonBirthdayTool
 import io.github.assistent.tools.SetPersonObservationTool
 import io.github.assistent.tools.ListMessagesTool
 import io.github.assistent.tools.RecallTool
@@ -154,8 +156,10 @@ class AppGraph(context: Context) {
             DeleteEventTool(calendar),
             LeaveMessageTool(messages),
             ListMessagesTool(messages),
+            DeleteMessageTool(messages),
             registerFaceTool,
             SetPersonObservationTool(people, registerFaceTool),
+            SetPersonBirthdayTool(people),
             ListAddTool(lists, presence),
             ListShowTool(lists),
             ListCheckTool(lists),
@@ -308,6 +312,15 @@ class AppGraph(context: Context) {
         runtime.isMusicPlaying = { i.musicPlaying }
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
+        i.onSpeechInRoom = {
+            scope.launch {
+                val pending = reminders.listPersonTriggered()
+                if (pending.isNotEmpty()) {
+                    val name = pending.first().style?.takeIf { it.isNotBlank() } ?: return@launch
+                    runtime.showBubble("Ei, $name… vem cá!", speak = true, emotion = io.github.assistent.core.Emotion.HAPPY)
+                }
+            }
+        }
     }
     /** Hands on camera: waves and gestures (MediaPipe). */
     val hands = io.github.assistent.vision.HandWatcher(context, config, http, scope)

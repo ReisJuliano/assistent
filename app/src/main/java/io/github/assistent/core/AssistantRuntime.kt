@@ -24,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -304,6 +305,25 @@ class AssistantRuntime(
         setEmotion(Emotion.SURPRISED, 1_000)
     }
 
+    private fun quickAnswer(tl: String): String? {
+        val now = java.time.LocalDateTime.now()
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        val fmtDate = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        val days = listOf("domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado")
+        val months = listOf("janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro")
+        val dayName = days[now.dayOfWeek.value % 7]
+        val monthName = months[now.monthValue - 1]
+        return when {
+            tl.contains("que hora") || tl.contains("horas são") || tl.contains("horas ta") || tl.contains("que horas") ->
+                "São ${now.format(fmt)}."
+            tl.contains("que dia") && (tl.contains("semana") || tl.contains("hoje")) ->
+                "Hoje é $dayName."
+            tl.contains("que dia") || tl.contains("qual a data") || tl.contains("data de hoje") ->
+                "Hoje é ${now.dayOfMonth} de $monthName de ${now.year}."
+            else -> null
+        }
+    }
+
     private fun isIdentityQuestion(text: String): Boolean {
         val q = text.lowercase()
         return q.contains("quem") || q.contains("qual pessoa") || q.contains("qual e a pessoa") ||
@@ -320,6 +340,10 @@ class AssistantRuntime(
         val imageBase64: String? = if (VISUAL_KEYWORDS.any { tl.contains(it) }) {
             cameraFrameSource?.invoke()?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
         } else null
+        quickAnswer(tl)?.let { answer ->
+            if (speak) say(answer, spontaneous = false)
+            return Reply(answer, Emotion.NEUTRAL, emptyList())
+        }
         if (speak && cameraBrightness < 28f && isIdentityQuestion(text)) {
             val line = Catchphrases.line("low_light_identity", LOW_LIGHT_LINES)
             showBubble(line, speak = false, emotion = Emotion.CONFUSED)
@@ -689,7 +713,11 @@ class AssistantRuntime(
         state.update { it.copy(bubble = text, bubbleAt = System.currentTimeMillis()) }
         if (!keepEmotion) setEmotion(emotion, 4_000)
         bubbleJob = scope.launch {
-            if (speak) say(text, spontaneous = true)
+            if (speak) {
+                // Wait until idle so we don't cut off or overlap an ongoing utterance.
+                state.first { it.activity == Activity.IDLE }
+                say(text, spontaneous = true)
+            }
             delay(4_000L + text.length * 55L)
             state.update { it.copy(bubble = null) }
         }

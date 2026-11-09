@@ -33,3 +33,14 @@ class ListMessagesTool(private val messages: MessageManager) : Tool {
         return if (list.isEmpty()) "none" else list.joinToString("\n") { "#${it.id}: ${it.text}" }
     }
 }
+
+class DeleteMessageTool(private val messages: MessageManager) : Tool {
+    override val name = "delete_message"
+    override val description = "Delete a pending message by its id."
+    override val parameters = params { number("id", "Message id from list_messages") }
+
+    override suspend fun execute(args: JsonObject): String {
+        val id = args.str("id")?.toLongOrNull() ?: return "missing id"
+        return if (messages.delete(id)) "deleted" else "not found"
+    }
+}

@@ -284,9 +284,11 @@ async def startup():
     load_state()
     asyncio.create_task(daily_rhythm())
     # Print banner
-    hostname = socket.gethostname()
     try:
-        local_ip = socket.gethostbyname(hostname)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
     except Exception:
         local_ip = "127.0.0.1"
     print(f"\n  Assistent Neural Brain running.")

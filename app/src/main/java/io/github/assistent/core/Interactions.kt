@@ -31,6 +31,9 @@ class Interactions(
     private val runtime: AssistantRuntime,
     private val scope: CoroutineScope,
 ) {
+    /** Called when speech is heard in the room (not wake phrase). Set by AppGraph to call out for pending reminders. */
+    var onSpeechInRoom: (() -> Unit)? = null
+
     private val cooldowns = HashMap<String, Long>()
 
     private fun ready(key: String, ms: Long): Boolean {
@@ -132,6 +135,7 @@ class Interactions(
                 if (asleep) runtime.onNoiseWhileSleeping()
                 else { runtime.setEmotion(Emotion.SURPRISED, 1_500); runtime.showBubble(Catchphrases.line("thunder_heard", THUNDER_HEARD), keepEmotion = true) }
             }
+            "speech" -> if (!asleep && ready("speech_reminder", 2 * 60_000)) onSpeechInRoom?.invoke()
         }
     }
 

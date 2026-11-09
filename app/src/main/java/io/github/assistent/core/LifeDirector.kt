@@ -49,6 +49,7 @@ class LifeDirector(
     private var geo: Triple<String, Double, Double>? = null
     private var nextQuipAt = System.currentTimeMillis() + gap(8 * 60, 20 * 60)
     private var sleepTalked = 0L
+    private val lastQuipCategory = HashMap<String, Long>()
 
     /** Set by AppGraph: contextual emotion state used to gate spontaneous jokes. */
     var emotionEngine: io.github.assistent.core.EmotionEngine? = null
@@ -207,7 +208,11 @@ class LifeDirector(
                 }
                 if (s.bubble == null && chance(20 * 60) && emotionEngine?.jokesAppropriate() != false) {
                     val (cat, examples) = weatherQuip(s.ambient)?.takeIf { Random.nextBoolean() } ?: timeQuips(LocalTime.now())
-                    onQuip(Catchphrases.line(cat, examples), false)
+                    val catLast = lastQuipCategory[cat] ?: 0L
+                    if (now - catLast >= 60 * 60_000L) {
+                        lastQuipCategory[cat] = now
+                        onQuip(Catchphrases.line(cat, examples), false)
+                    }
                 }
                 // Proactive: when curious and there is ambient context, volunteer a comment ~every 8 min.
                 if (s.bubble == null && s.activity == Activity.IDLE

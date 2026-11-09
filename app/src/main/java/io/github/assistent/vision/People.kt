@@ -182,6 +182,14 @@ class People(
         return updated
     }
 
+    suspend fun updateBirthday(name: String, mmdd: String): PersonEntity? {
+        val person = dao.byName(name) ?: return null
+        val updated = person.copy(birthday = mmdd)
+        dao.update(updated)
+        cache = null
+        return updated
+    }
+
     suspend fun markSeen(p: PersonEntity) = dao.update(p.copy(lastSeen = System.currentTimeMillis())).also { cache = null }
 
     /** Do not change identity from one noisy/blurred frame. */

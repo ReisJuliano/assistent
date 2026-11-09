@@ -2,6 +2,8 @@ package io.github.assistent.tools
 
 import io.github.assistent.vision.People
 import kotlinx.serialization.json.JsonObject
+import java.time.MonthDay
+import java.time.format.DateTimeFormatter
 
 /** Voice-driven enrollment of the face currently visible to the camera. */
 class RegisterFaceTool(private val people: People) : Tool {
@@ -27,6 +29,27 @@ class RegisterFaceTool(private val people: People) : Tool {
         people.updateNotes(person.name, observation)
         pendingName = null
         return "registered face for '${person.name}' with observation saved"
+    }
+}
+
+class SetPersonBirthdayTool(private val people: People) : Tool {
+    override val name = "set_person_birthday"
+    override val description = "Save a person's birthday so the robot greets them on the day. Date formats accepted: DD/MM, DD/MM/YYYY, MM-DD."
+    override val parameters = params {
+        string("personName", "Name of the enrolled person")
+        string("date", "Birthday date, e.g. 25/12 or 25/12/1990")
+    }
+
+    override suspend fun execute(args: JsonObject): String {
+        val name = args.str("personName")?.trim() ?: return "missing personName"
+        val raw = args.str("date")?.trim() ?: return "missing date"
+        val mmdd = runCatching {
+            val parts = raw.replace("-", "/").split("/")
+            val day = parts[0].toInt(); val month = parts[1].toInt()
+            MonthDay.of(month, day).format(DateTimeFormatter.ofPattern("MM-dd"))
+        }.getOrElse { return "date format not recognised; use DD/MM" }
+        val saved = people.updateBirthday(name, mmdd) ?: return "person '$name' not enrolled"
+        return "birthday saved for ${saved.name}: $mmdd"
     }
 }
 
