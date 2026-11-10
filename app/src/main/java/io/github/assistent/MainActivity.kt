@@ -59,7 +59,6 @@ class MainActivity : ComponentActivity() {
     private var tracker: FaceTracker? = null
     private var lastFaceTapAt = 0L
     private var faceTapCount = 0
-    private var gazeStartMs = 0L
 
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         onPermissionsChanged()
@@ -291,21 +290,7 @@ class MainActivity : ComponentActivity() {
                 tracker = FaceTracker(
                     this, { g ->
                         graph.runtime.onFace(g)
-                        if (g.present) {
-                            // Gaze-based activation: direct look for 2.2 s while idle triggers listen.
-                            val isDirect = g.yaw in -15f..15f && g.pitch in -20f..10f
-                            val now = System.currentTimeMillis()
-                            if (isDirect && graph.runtime.state.value.activity == Activity.IDLE) {
-                                if (gazeStartMs == 0L) gazeStartMs = now
-                                if (now - gazeStartMs > 2_200L) {
-                                    gazeStartMs = 0L
-                                    graph.runtime.manualTrigger.trySend(Unit)
-                                }
-                            } else {
-                                gazeStartMs = 0L
-                            }
-                        } else {
-                            gazeStartMs = 0L
+                        if (!g.present) {
                             graph.presence.clear()
                             graph.greeter.onFaceGone()
                             graph.body.onFaceGone()

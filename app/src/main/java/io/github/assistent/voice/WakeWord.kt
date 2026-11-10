@@ -130,6 +130,8 @@ class WakeWordEngine(
         onPcm: (ShortArray, Int) -> Unit = { _, _ -> },
         /** True while music plays in the room: song lyrics must not sound like someone calling it. */
         music: () -> Boolean = { false },
+        /** The visible speaker is looking at the robot, so ordinary speech is directed at it. */
+        directed: () -> Boolean = { false },
         /** Called with non-wake speech for ambient context buffering. */
         onHeardText: (String) -> Unit = {},
     ): String =
@@ -178,7 +180,7 @@ class WakeWordEngine(
                     if (n <= 0) continue
                     // Safety handoff: a partial wake hit must never leave the wake detector
                     // holding the microphone forever if Vosk does not emit an endpoint.
-                    if (attention && System.currentTimeMillis() - attentionAt > 1_800L) {
+                    if (attention && System.currentTimeMillis() - attentionAt > 900L) {
                         lastWakeAudio = snapshot(2.5f)
                         return@withContext remainderFromFree()
                     }
@@ -232,9 +234,16 @@ class WakeWordEngine(
                         // Word times of both decoders count from their creation (same frames, never reset), so the
                         // grammar's "name ends at" lines up with the free text; just consume finished free results.
                         if (freeDone) {
-                            recentFree.addAll(timedWords(rec.result))
+                            val freeResult = rec.result
+                            recentFree.addAll(timedWords(freeResult))
                             val last = recentFree.lastOrNull()?.end ?: 0f
                             while (recentFree.isNotEmpty() && recentFree.first().end < last - 10f) recentFree.removeFirst()
+                            val heard = field(freeResult, "text")
+                            if (heard.isNotBlank() && directed()) {
+                                lastWakeAudio = snapshot(3f)
+                                return@withContext heard
+                            }
+                            if (heard.length > 10) onHeardText(heard)
                         }
                         continue
                     }
@@ -252,7 +261,11 @@ class WakeWordEngine(
                             onAttention()
                         }
                         if (remainder != null) { lastWakeAudio = snapshot(3f); return@withContext remainder }
-                        if (remainder == null && heard.length > 10) onHeardText(heard)
+                        if (heard.isNotBlank() && directed()) {
+                            lastWakeAudio = snapshot(3f)
+                            return@withContext heard
+                        }
+                        if (heard.length > 10) onHeardText(heard)
                         if (attention && System.currentTimeMillis() - attentionAt > 2_500) {
                             attention = false
                             onDismiss()

@@ -28,6 +28,10 @@ import io.github.assistent.tools.WhereIsTool
 import io.github.assistent.tools.BroadcastTool
 import io.github.assistent.tools.CallRoomTool
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import io.github.assistent.vision.People
 import io.github.assistent.data.AppDatabase
 import io.github.assistent.data.MemoryRepository
@@ -357,6 +361,37 @@ class AppGraph(context: Context) {
             if (!sentRemote) runtime.say(text, io.github.assistent.core.Emotion.SURPRISED)
         }
     }
+    // Face and ambient-voice recognition can arrive almost together. Serialize delivery so a
+    // person-triggered reminder is spoken exactly once regardless of which sensor noticed them.
+    val personReminderDelivery = Mutex()
+    val reminderSummons = HashMap<Long, Job>()
+    suspend fun deliverPersonReminders(person: io.github.assistent.data.PersonEntity) {
+        synchronized(reminderSummons) { reminderSummons.remove(person.id)?.cancel() }
+        personReminderDelivery.withLock {
+            val pending = reminders.listPersonTriggered(person.id)
+            for (r in pending) {
+                runtime.wake(greet = false)
+                runtime.say(runtime.reminderLine(r, person.name), io.github.assistent.core.Emotion.HAPPY)
+                reminders.firePersonTriggered(r)
+            }
+        }
+    }
+    fun summonPersonForReminder(person: io.github.assistent.data.PersonEntity) {
+        synchronized(reminderSummons) {
+            if (reminderSummons[person.id]?.isActive == true) return
+            reminderSummons[person.id] = scope.launch {
+                while (reminders.listPersonTriggered(person.id).isNotEmpty() && presence.currentPerson.value?.id != person.id) {
+                    runtime.wake(greet = false)
+                    runtime.showBubble(
+                        "Ei, ${person.name}… vem aqui, tenho um lembrete pra você!",
+                        speak = true,
+                        emotion = io.github.assistent.core.Emotion.HAPPY,
+                    )
+                    delay(20_000)
+                }
+            }
+        }
+    }
     val greeter = Greeter(config, runtime, people, db.reminders(), llm, events, scope)
     val mesh = Mesh(config, http, db.people(), memory, scope).also { m ->
         memory.onAdded = m::shareMemory
@@ -364,14 +399,7 @@ class AppGraph(context: Context) {
         greeter.onKnownPersonSeen = { person ->
             presence.onSeen(person)
             scope.launch { messages.deliverFor(person) }
-            scope.launch {
-                val pending = reminders.listPersonTriggered(person.id)
-                for (r in pending) {
-                    runtime.wake(greet = false)
-                    runtime.say(runtime.reminderLine(r, person.name), io.github.assistent.core.Emotion.HAPPY)
-                    reminders.firePersonTriggered(r)
-                }
-            }
+            scope.launch { deliverPersonReminders(person) }
         }
         // Presence is cleared by FaceTracker when no face remains in the frame. A failed
         // embedding while the face is still visible must not erase the current person.
@@ -398,15 +426,6 @@ class AppGraph(context: Context) {
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
         i.onInteraction = { kind -> if (config.current.life.houseMood) houseMood.onInteraction(kind) }
-        i.onSpeechInRoom = {
-            scope.launch {
-                val pending = reminders.listPersonTriggered()
-                if (pending.isNotEmpty()) {
-                    val name = pending.first().style?.takeIf { it.isNotBlank() } ?: return@launch
-                    runtime.showBubble("Ei, $name… vem cá!", speak = true, emotion = io.github.assistent.core.Emotion.HAPPY)
-                }
-            }
-        }
     }
     /** Hands on camera: waves and gestures (MediaPipe). */
     val hands = io.github.assistent.vision.HandWatcher(context, config, http, scope)
@@ -426,6 +445,7 @@ class AppGraph(context: Context) {
         musicPlaying = { interactions.musicPlaying },
     ).also { rp ->
         rp.report = mesh::reportPresence
+        rp.onPersonNoticed = ::summonPersonForReminder
         body.onOutfitMatch = rp::onOutfit
         body.onObjects = interactions::onObjectsSeen
         hands.onWave = interactions::onHandWave

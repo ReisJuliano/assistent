@@ -153,7 +153,7 @@ class Brain(
 
     private suspend fun askLocked(userText: String, userImage: String?, onActivity: (Activity) -> Unit, onText: (suspend (String) -> Unit)?): Reply {
         val cfg = config.current
-        val messages = mutableListOf(ChatMessage("system", systemPrompt()))
+        val messages = mutableListOf(ChatMessage("system", systemPrompt(userText)))
         messages += history
         val user = ChatMessage("user", userText, imageBase64 = userImage)
         messages += user
@@ -288,13 +288,16 @@ class Brain(
         }
     }
 
-    private suspend fun systemPrompt(): String {
+    private suspend fun systemPrompt(userText: String = ""): String {
         val cfg = config.current
         val p = cfg.personality
         val now = ZonedDateTime.now()
         val locale = Locale.forLanguageTag(p.language)
         val person = presence.currentPerson.value
-        val memories = memory.recentForPrompt(person?.id, p.memoriesInPrompt)
+        val relevant = memory.search(userText, p.memoriesInPrompt, person?.id, semantic = false)
+        val memories = (relevant + memory.recentForPrompt(person?.id, p.memoriesInPrompt))
+            .distinctBy { it.id }
+            .take(p.memoriesInPrompt)
         return buildString {
             appendLine("You are ${p.name}, a small home robot assistant living in an Android phone, shown as an animated face (eyes and mouth).")
             appendLine("Personality: ${p.traits}.")
@@ -342,6 +345,9 @@ class Brain(
                 memories.forEach {
                     val owner = if (person != null && it.personId == person.id) "${person.name}: " else ""
                     appendLine("- $owner${it.content}")
+                }
+                if (memories.any { it.source == "proactive" }) {
+                    appendLine("Fresh proactive facts above are already cached: answer directly from them instead of calling a lookup tool when they satisfy the question.")
                 }
             }
             houseMood?.mood?.value?.let { m ->

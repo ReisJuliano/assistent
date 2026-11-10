@@ -30,6 +30,8 @@ class RoomPresence(
 ) {
     /** Also tell the other devices (set by the app graph). */
     var report: (String) -> Unit = {}
+    /** Called after ambient speech is matched to an enrolled person. */
+    var onPersonNoticed: (PersonEntity) -> Unit = {}
     @Volatile private var lastVoiceTry = 0L
     private val lastNoticed = HashMap<Long, Long>()
 
@@ -65,6 +67,7 @@ class RoomPresence(
         Log.d(TAG, "noticed ${person.name} by $source (${"%.2f".format(score)})")
         presence.onNoticed(person, now)
         report(person.name)
+        if (source == "voice") onPersonNoticed(person)
         events.emit("person_noticed", buildJsonObject { put("name", person.name); put("source", source); put("score", score) })
     }
 

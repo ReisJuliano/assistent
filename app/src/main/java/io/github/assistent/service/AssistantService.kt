@@ -163,6 +163,10 @@ class AssistantService : LifecycleService() {
             },
             strict = { runtime.state.value.activity == Activity.SLEEPING },
             music = { graph.interactions.musicPlaying },
+            directed = {
+                val gaze = runtime.gaze.value
+                gaze.present && gaze.yaw in -18f..18f && gaze.pitch in -22f..12f
+            },
             onHeardText = { text -> graph.ambientBuffer.add(text) },
         )
     }
