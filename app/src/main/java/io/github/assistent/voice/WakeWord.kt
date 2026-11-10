@@ -164,6 +164,9 @@ class WakeWordEngine(
             var attentionAt = 0L
             var noiseFloor = 0.01f
             var voiceTail = 0
+            var directedSpeech = false
+            var lastVoicedAt = 0L
+            var directedPartial = ""
 
             /** Text said after the wake phrase in the same breath, from the free recognizer (by word timing). */
             fun remainderFromFree(nameEnd: Float? = null): String {
@@ -178,12 +181,6 @@ class WakeWordEngine(
                     ensureActive()
                     val n = mic.read(buf, 0, buf.size)
                     if (n <= 0) continue
-                    // Safety handoff: a partial wake hit must never leave the wake detector
-                    // holding the microphone forever if Vosk does not emit an endpoint.
-                    if (attention && System.currentTimeMillis() - attentionAt > 900L) {
-                        lastWakeAudio = snapshot(2.5f)
-                        return@withContext remainderFromFree()
-                    }
                     var sum = 0.0
                     for (k in 0 until n) {
                         sum += buf[k] * buf[k].toDouble()
@@ -204,11 +201,22 @@ class WakeWordEngine(
                     }
                     // Cheap VAD: don't run the recognizer on silence (big CPU/heat saver); keep a short tail after sound.
                     noiseFloor = if (rms < noiseFloor) noiseFloor * 0.95f + rms * 0.05f else noiseFloor * 0.999f + rms * 0.001f
-                    if (rms > maxOf(0.006f, noiseFloor * 2.5f)) voiceTail = 20 // ~1 s
+                    val voiced = rms > maxOf(0.006f, noiseFloor * 2.5f)
+                    val now = System.currentTimeMillis()
+                    if (voiced) {
+                        voiceTail = 20 // ~1 s
+                        lastVoicedAt = now
+                        // Latch eye contact at any point in the utterance. The person naturally looks away while
+                        // finishing a sentence; that must not turn a directed command back into ambient speech.
+                        if (directed()) directedSpeech = true
+                    }
                     if (voiceTail <= 0) continue
                     voiceTail--
 
                     val freeDone = rec.acceptWaveForm(buf, n)
+                    if (directedSpeech && !freeDone) {
+                        field(rec.partialResult, "partial").trim().takeIf { it.isNotBlank() }?.let { directedPartial = it }
+                    }
                     if (grammarRec != null) {
                         if (grammarRec.acceptWaveForm(buf, n)) {
                             val hit = grammarHit(grammarRec.result, knownNormalized)
@@ -239,11 +247,23 @@ class WakeWordEngine(
                             val last = recentFree.lastOrNull()?.end ?: 0f
                             while (recentFree.isNotEmpty() && recentFree.first().end < last - 10f) recentFree.removeFirst()
                             val heard = field(freeResult, "text")
-                            if (heard.isNotBlank() && directed()) {
+                            if (heard.isNotBlank() && directedSpeech) {
                                 lastWakeAudio = snapshot(3f)
                                 return@withContext heard
                             }
                             if (heard.length > 10) onHeardText(heard)
+                        }
+                        // A partial name hit hands off on the first short pause, not on a fixed deadline that
+                        // could cut a long command in half. The hard cap only protects against sustained noise.
+                        if (attention && (now - lastVoicedAt >= 300L || now - attentionAt >= 4_000L)) {
+                            lastWakeAudio = snapshot(3f)
+                            return@withContext remainderFromFree()
+                        }
+                        // Vosk's endpoint can take seconds. Eye contact gives us enough intent to hand off the
+                        // latest partial after a short natural pause, while the words are still fresh.
+                        if (!attention && directedSpeech && directedPartial.isNotBlank() && now - lastVoicedAt >= 300L) {
+                            lastWakeAudio = snapshot(3f)
+                            return@withContext directedPartial
                         }
                         continue
                     }
@@ -261,7 +281,7 @@ class WakeWordEngine(
                             onAttention()
                         }
                         if (remainder != null) { lastWakeAudio = snapshot(3f); return@withContext remainder }
-                        if (heard.isNotBlank() && directed()) {
+                        if (heard.isNotBlank() && directedSpeech) {
                             lastWakeAudio = snapshot(3f)
                             return@withContext heard
                         }
@@ -279,6 +299,10 @@ class WakeWordEngine(
                             lastWakeAudio = snapshot(2.5f)
                             return@withContext partial
                         }
+                    }
+                    if (!attention && directedSpeech && directedPartial.isNotBlank() && now - lastVoicedAt >= 300L) {
+                        lastWakeAudio = snapshot(3f)
+                        return@withContext directedPartial
                     }
                 }
                 @Suppress("UNREACHABLE_CODE") ""

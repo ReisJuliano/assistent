@@ -36,6 +36,8 @@ import kotlinx.coroutines.selects.select
  * trigger (tap on the face, API), then runs a full voice conversation.
  */
 class AssistantService : LifecycleService() {
+    private data class Trigger(val command: String, val wakePhrase: Boolean)
+
     private val graph get() = (application as AssistentApp).graph
     private var loop: Job? = null
     private var wakeFailedAt = 0L
@@ -83,32 +85,41 @@ class AssistantService : LifecycleService() {
         runtime.state.update { it.copy(serviceRunning = true) }
         while (lifecycleScope.isActive) {
             try {
-                val command = coroutineScope {
+                val trigger = coroutineScope {
                     val wake = async { awaitWakePhrase() }
                     // Wake settings edited live (phrases, model, on/off): restart listening with them.
                     val wakeConfigChanged = async {
                         graph.config.config.map { it.wake to it.personality.name }.distinctUntilChanged().drop(1).first()
                     }
-                    val result: String? = select {
-                        wake.onAwait { it }
-                        runtime.manualTrigger.onReceive { "" }
+                    val result: Trigger? = select {
+                        wake.onAwait { Trigger(it, wakePhrase = true) }
+                        runtime.manualTrigger.onReceive { Trigger("", wakePhrase = false) }
                         wakeConfigChanged.onAwait { wakeFailedAt = 0L; null }
                     }
                     wake.cancel(); wakeConfigChanged.cancel()
                     result
                 }
-                if (command != null) {
+                if (trigger != null) {
                     // Who called? Identify the voice of the wake phrase in the background (face may not be visible).
-                    graph.wakeWord.lastWakeAudio?.let { audio ->
+                    if (trigger.wakePhrase) graph.wakeWord.lastWakeAudio?.let { audio ->
                         lifecycleScope.launch {
                             runCatching { graph.voiceIdentity.identify(audio) }.getOrNull()?.person?.let { graph.presence.onSeen(it) }
                         }
                     }
-                    val wizardReply = graph.reminderWizard.tryHandle(command)
+                    if (trigger.wakePhrase && trigger.command.isBlank()) {
+                        runtime.say(
+                            io.github.assistent.core.Catchphrases.line(
+                                "wake_ack",
+                                listOf("Oi, tô ouvindo.", "Fala aí.", "Pode falar.", "Tô aqui."),
+                            ),
+                            io.github.assistent.core.Emotion.HAPPY,
+                        )
+                    }
+                    val wizardReply = graph.reminderWizard.tryHandle(trigger.command)
                     if (wizardReply != null) {
                         runtime.say(wizardReply, io.github.assistent.core.Emotion.HAPPY)
                     } else {
-                        runtime.converse(command)
+                        runtime.converse(trigger.command)
                     }
                 }
             } catch (e: CancellationException) {
@@ -165,7 +176,9 @@ class AssistantService : LifecycleService() {
             music = { graph.interactions.musicPlaying },
             directed = {
                 val gaze = runtime.gaze.value
-                gaze.present && gaze.yaw in -18f..18f && gaze.pitch in -22f..12f
+                // Head pose is noisy on phones below eye level, so allow a natural frontal cone instead of
+                // requiring an unnaturally exact stare into the camera lens.
+                gaze.present && gaze.yaw in -28f..28f && gaze.pitch in -30f..25f
             },
             onHeardText = { text -> graph.ambientBuffer.add(text) },
         )
