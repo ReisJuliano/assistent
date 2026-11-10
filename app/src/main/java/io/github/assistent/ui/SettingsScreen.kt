@@ -463,6 +463,18 @@ private fun SettingsList(
                         Field("Local padrão (cidade, estado, país)", cfg.weather.defaultLocation) { v -> up { it.copy(weather = it.weather.copy(defaultLocation = v.trim())) } }
                     }
                 }
+                item {
+                    Section("Google IA (visão, embeddings, Live)") {
+                        Field("Chave da API Gemini", cfg.google.apiKey, secret = true) { v -> up { it.copy(google = it.google.copy(apiKey = v.trim())) } }
+                        Field("Modelo de visão", cfg.google.visionModel) { v -> up { it.copy(google = it.google.copy(visionModel = v.trim())) } }
+                        Field("Modelo de embeddings", cfg.google.embeddingModel) { v -> up { it.copy(google = it.google.copy(embeddingModel = v.trim())) } }
+                        Field("Modelo Live", cfg.google.liveModel) { v -> up { it.copy(google = it.google.copy(liveModel = v.trim())) } }
+                        Label("Memória semântica (RAG)")
+                        Segmented(listOf("Desligado" to "off", "Auto" to "auto", "Só vetorial" to "only"), cfg.memory.semantic) { v ->
+                            up { it.copy(memory = it.memory.copy(semantic = v)) }
+                        }
+                    }
+                }
             }
             SettingsTab.VOICE -> {
                 item {
@@ -656,6 +668,35 @@ private fun SettingsList(
             SettingsTab.SYSTEM -> {
                 item { UpdateSection(graph, cfg, up) }
                 item {
+                    Section("MCP (ferramentas externas)") {
+                        Hint("Adicione servidores MCP para dar ao assistente ferramentas extras via JSON-RPC 2.0.")
+                        cfg.mcp.servers.forEachIndexed { i, server ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Field("Nome", server.name) { v ->
+                                    up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers.toMutableList().also { it[i] = server.copy(name = v.trim()) })) }
+                                }
+                                Field("URL", server.url) { v ->
+                                    up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers.toMutableList().also { it[i] = server.copy(url = v.trim()) })) }
+                                }
+                                Field("Token (opcional)", server.token) { v ->
+                                    up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers.toMutableList().also { it[i] = server.copy(token = v.trim()) })) }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    SwitchRow("Ativo", checked = server.enabled) { v ->
+                                        up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers.toMutableList().also { it[i] = server.copy(enabled = v) })) }
+                                    }
+                                    TextButton(onClick = {
+                                        up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers.toMutableList().also { it.removeAt(i) })) }
+                                    }) { Text("Remover") }
+                                }
+                            }
+                        }
+                        TextButton(onClick = {
+                            up { c -> c.copy(mcp = c.mcp.copy(servers = c.mcp.servers + io.github.assistent.config.McpServerConfig("novo", ""))) }
+                        }) { Text("+ Adicionar servidor") }
+                    }
+                }
+                item {
                     var reveal by remember { mutableStateOf(false) }
                     Section("API local") {
                         SwitchRow("Ativada", checked = cfg.api.enabled) { v -> up { it.copy(api = it.api.copy(enabled = v)) } }
@@ -699,6 +740,15 @@ private fun LifeSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> App
                 up { it.copy(life = it.life.copy(soundEvents = v)) }
             }
             SwitchRow("Sonhos", "Enquanto dorme", life.dreams) { v -> up { it.copy(life = it.life.copy(dreams = v)) } }
+            if (life.dreams) {
+                Label("Imagens nos sonhos")
+                Segmented(listOf("Desligado" to "off", "Pollinations" to "pollinations", "SD local" to "sd"), life.dreamImages) { v ->
+                    up { it.copy(life = it.life.copy(dreamImages = v)) }
+                }
+                if (life.dreamImages == "sd") Field("URL do Automatic1111", life.sdUrl) { v ->
+                    up { it.copy(life = it.life.copy(sdUrl = v.trim())) }
+                }
+            }
             SwitchRow("Acordar sozinho às vezes", "Acorda, olha em volta e pergunta se tem alguém", life.selfWake) { v -> up { it.copy(life = it.life.copy(selfWake = v)) } }
             SwitchRow("Reações ao acordar", "Susto, tontura, sonolência", life.wakeReactions) { v -> up { it.copy(life = it.life.copy(wakeReactions = v)) } }
             SwitchRow("Acordar com movimento", "Se assusta, ou acorda e diz “opa, não vi você aí”", life.wakeOnMotion) { v -> up { it.copy(life = it.life.copy(wakeOnMotion = v)) } }
@@ -715,6 +765,22 @@ private fun LifeSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> App
                 up { it.copy(life = it.life.copy(roomMusic = v)) }
             }
             SwitchRow("Imitar a câmera", "Copia inclinação da cabeça, piscadas, fone, xícara, livro…", life.mimic) { v -> up { it.copy(life = it.life.copy(mimic = v)) } }
+            SwitchRow("Humor da casa", "Adapta o tom pelo que ouve e sente ao redor (sons, interações, conversa)", life.houseMood) { v ->
+                up { it.copy(life = it.life.copy(houseMood = v)) }
+            }
+            SwitchRow("Diário noturno", "Escreve uma entrada de diário todo dia (pode ser lida: 'como foi seu dia?')", life.diary) { v ->
+                up { it.copy(life = it.life.copy(diary = v)) }
+            }
+            if (life.diary) SliderRow("Hora do diário", life.diaryHour.toFloat(), 20f..23f, format = { "${it.roundToInt()}h" }) { v ->
+                up { it.copy(life = it.life.copy(diaryHour = v.roundToInt())) }
+            }
+            Label("Resumo da manhã")
+            Segmented(listOf("Desligado" to "off", "Voz" to "voice", "Balão" to "bubble"), life.briefing) { v ->
+                up { it.copy(life = it.life.copy(briefing = v)) }
+            }
+            if (life.briefing != "off") SliderRow("Hora do resumo", life.briefingHour.toFloat(), 6f..11f, format = { "${it.roundToInt()}h" }) { v ->
+                up { it.copy(life = it.life.copy(briefingHour = v.roundToInt())) }
+            }
             Label("Ver agora")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 io.github.assistent.face.Scene.entries.forEach { sc ->
@@ -735,6 +801,19 @@ private fun LifeSection(graph: AppGraph, cfg: AppConfig, up: ((AppConfig) -> App
                     FilterChip(selected = false, label = { Text(label) }, onClick = { graph.runtime.life.setAmbient(amb); onClose() })
                 }
             }
+        }
+    }
+    Section("Modo ao vivo") {
+        Hint("Conversa contínua full-duplex via Gemini Live (precisa de google.apiKey). Sem wake word durante a sessão.")
+        SwitchRow("Ativado", checked = cfg.live.enabled) { v -> up { it.copy(live = it.live.copy(enabled = v)) } }
+        if (cfg.live.enabled) {
+            SliderRow("Duração máxima", cfg.live.maxDurationMinutes.toFloat(), 5f..60f, format = { "${it.roundToInt()} min" }) { v ->
+                up { it.copy(live = it.live.copy(maxDurationMinutes = v.roundToInt())) }
+            }
+            SliderRow("Silêncio para encerrar", cfg.live.silenceTimeoutSeconds.toFloat(), 15f..120f, format = { "${it.roundToInt()} s" }) { v ->
+                up { it.copy(live = it.live.copy(silenceTimeoutSeconds = v.roundToInt())) }
+            }
+            Field("Voz (Gemini)", cfg.live.voice) { v -> up { it.copy(live = it.live.copy(voice = v.trim())) } }
         }
     }
 }

@@ -17,6 +17,10 @@ class ToolRegistry(
         tools += tool
     }
 
+    fun unregister(prefix: String) {
+        tools.removeAll { it.name.startsWith(prefix) }
+    }
+
     fun all(): List<Tool> = tools + config.current.webhooks.filter { it.enabled }.map { WebhookTool(http, it) }
 
     fun find(name: String): Tool? = all().firstOrNull { it.name == name }

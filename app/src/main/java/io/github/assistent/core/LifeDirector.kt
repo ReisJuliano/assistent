@@ -56,6 +56,14 @@ class LifeDirector(
 
     /** Set by AppGraph: ambient speech buffer — when curious, robot may volunteer info from it. */
     var ambientBuffer: AmbientBuffer? = null
+    /** Set by AppGraph: house mood tracker — ticked every ~30 s. */
+    var houseMood: HouseMood? = null
+    private var lastMoodTickAt = 0L
+    /** Set by AppGraph: nightly diary writer — ticked each loop. */
+    var diary: io.github.assistent.core.DiaryManager? = null
+    /** Set by AppGraph: fires morning briefing once per day when someone is present. */
+    var onBriefing: (() -> Unit)? = null
+    private var briefedForDay = ""
 
     /** Set by AppGraph: fires manualTrigger to start listening after a proactive ambient comment. */
     var onAmbientComment: ((String) -> Unit)? = null
@@ -147,6 +155,19 @@ class LifeDirector(
         val cfg = config.current.life
         val s = state.value
         val now = System.currentTimeMillis()
+        // Decay house mood channels every 30 s.
+        if (cfg.houseMood && now - lastMoodTickAt > 30_000) { lastMoodTickAt = now; houseMood?.tick(now) }
+        // Nightly diary write.
+        diary?.tick()
+        // Morning briefing — once per day when someone is present.
+        val today = java.time.LocalDate.now().toString()
+        if (cfg.briefing != "off" && briefedForDay != today &&
+            LocalTime.now().hour >= cfg.briefingHour && s.activity != Activity.SLEEPING &&
+            onBriefing != null
+        ) {
+            briefedForDay = today
+            onBriefing?.invoke()
+        }
         val current = Scene.of(s.scene)
         // A weather moment ends by itself after a while.
         if (s.weatherActive && now > weatherUntil) state.update { it.copy(weatherActive = false) }
@@ -234,9 +255,14 @@ class LifeDirector(
     /** True with probability matching "about once every [everySeconds]" for a 0.5 s tick. */
     private fun chance(everySeconds: Int) = Random.nextFloat() < 0.5f / everySeconds.coerceAtLeast(1)
 
-    private fun dreamScene(allowed: List<String>) = Scene.entries.filter {
-        it.kind == Scene.Kind.DREAM && it != Scene.SLEEP_PEEK && it !in recentScenes && (allowed.isEmpty() || it.key in allowed)
-    }.randomOrNull()
+    private fun dreamScene(allowed: List<String>): Scene? {
+        val cfg = config.current.life
+        return Scene.entries.filter {
+            it.kind == Scene.Kind.DREAM && it != Scene.SLEEP_PEEK && it !in recentScenes &&
+                (allowed.isEmpty() || it.key in allowed) &&
+                (it != Scene.DREAM_PAINTING || cfg.dreamImages != "off")
+        }.randomOrNull()
+    }
 
     /**
      * Comments about the weather outside right now ("chuvinha boa pra dormir, né?"). AI-written in batches of 10

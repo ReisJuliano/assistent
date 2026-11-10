@@ -23,6 +23,9 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -52,6 +55,8 @@ class AssistantRuntime(
     http: okhttp3.OkHttpClient,
 ) {
     val state = MutableStateFlow(AssistantState())
+    /** Bitmap shown faded over the face (dream images, vision previews). Null = none. */
+    val faceImage = MutableStateFlow<Pair<ImageBitmap?, Float>>(null to 0f)
     /** Hobbies, dreams, wake-up reactions and weather ambience. */
     val life = LifeDirector(config, state, http, events, scope)
     val gaze = MutableStateFlow(Gaze())
@@ -333,13 +338,12 @@ class AssistantRuntime(
 
     suspend fun chat(text: String, speak: Boolean = true): Reply {
         wake(greet = false)
+        houseMood?.onInteraction("conversation")
         life.onConversation()
         state.update { it.copy(lastHeard = text, partial = "", error = null) }
         events.emit("user_said", JsonPrimitive(text))
         val tl = text.lowercase()
-        val imageBase64: String? = if (VISUAL_KEYWORDS.any { tl.contains(it) }) {
-            cameraFrameSource?.invoke()?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
-        } else null
+        val imageBase64: String? = if (VISUAL_KEYWORDS.any { tl.contains(it) }) frameBase64() else null
         quickAnswer(tl)?.let { answer ->
             if (speak) say(answer, spontaneous = false)
             return Reply(answer, Emotion.NEUTRAL, emptyList())
@@ -703,9 +707,35 @@ class AssistantRuntime(
     }
 
     private var bubbleJob: Job? = null
+    private var faceImageJob: Job? = null
+
+    /** Shows a bitmap faded over the face for the given duration (ms), then fades out. Max 1024 px. */
+    fun showFaceImage(jpeg: ByteArray, fadeMs: Long = 600, holdMs: Long = 8_000) {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, opts)
+        val sample = maxOf(1, maxOf(opts.outWidth, opts.outHeight) / 1024)
+        val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return
+        val img = bmp.asImageBitmap()
+        faceImageJob?.cancel()
+        faceImageJob = scope.launch {
+            val steps = 20
+            for (i in 1..steps) { faceImage.value = img to i / steps.toFloat(); delay(fadeMs / steps) }
+            delay(holdMs)
+            for (i in steps downTo 0) { faceImage.value = img to i / steps.toFloat(); delay(fadeMs / steps) }
+            faceImage.value = null to 0f
+        }
+    }
+
+    fun clearFaceImage() {
+        faceImageJob?.cancel()
+        faceImage.value = null to 0f
+    }
 
     /** Set by the app graph when multi-device is available. */
     var mesh: Mesh? = null
+    /** Set by the app graph: tracks ambient house mood. */
+    var houseMood: HouseMood? = null
 
     /** Shows a speech bubble next to the face for a few seconds, optionally saying it too. */
     fun showBubble(text: String, speak: Boolean = false, emotion: Emotion = Emotion.HAPPY, keepEmotion: Boolean = false) {
@@ -833,6 +863,20 @@ class AssistantRuntime(
             sleepAfterReply = true
             return "will sleep after replying"
         }
+    }
+
+    /** Returns a base64-encoded JPEG of the current camera frame (max 768 px), or null if unavailable. */
+    fun frameBase64(): String? {
+        val raw = cameraFrameSource?.invoke() ?: return null
+        // Downscale to ~768px to keep payloads small.
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
+        val sample = maxOf(1, maxOf(opts.outWidth, opts.outHeight) / 768)
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP)
+        val out = java.io.ByteArrayOutputStream()
+        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, out)
+        return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
     }
 
     companion object {

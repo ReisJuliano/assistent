@@ -214,6 +214,8 @@ class PhrasePool(
             "shy" to "a pessoa ficou encarando o robô por muito tempo e ele ficou com vergonha",
             "goodbye" to "a pessoa {n} está indo embora e o robô se despede",
             "fact" to "curiosidade curta, verdadeira e surpreendente de tema variado (animais, espaço, corpo humano, história, comida, tecnologia)",
+            "live_intro" to "o robô acabou de entrar no modo ao vivo (conversa contínua sem wake word); avisa animado em 1 frase curta",
+            "live_bye" to "o robô está saindo do modo ao vivo e voltando ao normal; avisa em 1 frase curta e simpática",
         )
     }
 }

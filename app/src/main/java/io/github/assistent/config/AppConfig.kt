@@ -35,11 +35,44 @@ data class AppConfig(
     /** Other devices that are "the same robot" (never synced as config). */
     val mesh: MeshConfig = MeshConfig(),
     val webhooks: List<WebhookDef> = emptyList(),
+    val google: GoogleConfig = GoogleConfig(),
+    val mcp: McpConfig = McpConfig(),
+    val live: LiveConfig = LiveConfig(),
+)
+
+@Serializable
+data class McpServerConfig(
+    val name: String,
+    val url: String,
+    val token: String = "",
+    val enabled: Boolean = true,
+)
+
+@Serializable
+data class McpConfig(val servers: List<McpServerConfig> = emptyList())
+
+@Serializable
+data class LiveConfig(
+    val enabled: Boolean = false,
+    val maxDurationMinutes: Int = 30,
+    val silenceTimeoutSeconds: Int = 45,
+    val voice: String = "Aoede",
+)
+
+@Serializable
+data class GoogleConfig(
+    /** Gemini API key (free tier). Used for vision (look tool), embeddings and Live mode. Per-device; never synced. */
+    val apiKey: String = "",
+    val visionModel: String = "gemini-2.5-flash",
+    val embeddingModel: String = "text-embedding-004",
+    val liveModel: String = "gemini-2.5-flash-preview-native-audio-dialog",
 )
 
 @Serializable
 data class MemoryConfig(
     val autoExtract: Boolean = true,
+    /** "off" = keyword only; "auto" = use embeddings when google.apiKey is set; "only" = vector-only. */
+    val semantic: String = "auto",
 )
 
 @Serializable
@@ -310,6 +343,17 @@ data class LifeConfig(
     val powerSave: Boolean = true,
     /** Scene keys allowed to play on their own. Empty = all. */
     val scenes: List<String> = emptyList(),
+    /** Track ambient house mood from sounds, interactions and conversations; influences spontaneous speech. */
+    val houseMood: Boolean = true,
+    /** Write a nightly diary entry at diaryHour using the LLM. */
+    val diary: Boolean = true,
+    val diaryHour: Int = 23,
+    /** Morning briefing mode: off, voice or bubble. Triggers once per day at briefingHour when someone is present. */
+    val briefing: String = "off",
+    val briefingHour: Int = 8,
+    /** Dream image source: off (default), pollinations (free, sends prompt), sd (local Automatic1111). */
+    val dreamImages: String = "off",
+    val sdUrl: String = "",
 )
 
 /** Face recognition (on-device MobileFaceNet) and greetings when someone walks by. */

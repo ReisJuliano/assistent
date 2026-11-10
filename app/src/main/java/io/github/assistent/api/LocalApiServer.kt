@@ -453,6 +453,15 @@ class LocalApiServer(private val g: AppGraph) {
                     call.respond(buildJsonObject { put("deleted", g.memory.delete(call.parameters["id"]!!.toLong())) })
                 })
                 delete("/memories", guard { g.memory.clear(); call.respond(ok()) })
+                post("/memories/embed", guard {
+                    val rebuild = (AppJson.parseToJsonElement(call.receiveText()) as? JsonObject)
+                        ?.get("rebuild")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content == "true" } ?: false
+                    if (rebuild) g.db.memoryEmbeddings().deleteAll(g.embeddings.model())
+                    val missing = g.memory.recent(2000).filter { g.db.memoryEmbeddings().get(it.id) == null }
+                    call.respond(buildJsonObject { put("queued", missing.size) })
+                    // Re-trigger backfill via onEmbedQueue for each missing
+                    for (m in missing) g.memory.onEmbedQueue?.invoke(m.id, m.content)
+                })
 
                 // ---------------------------------------------------------- reminders
                 get("/reminders", guard {
@@ -608,6 +617,15 @@ class LocalApiServer(private val g: AppGraph) {
                         }
                     })
                 })
+                // VLM vision query: POST body is {question?} or empty; uses LookTool logic.
+                post("/look", guard {
+                    val b = runCatching { AppJson.parseToJsonElement(call.receiveText()) as JsonObject }.getOrElse { buildJsonObject {} }
+                    val question = (b["question"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+                    val tool = g.tools.find("look") as? io.github.assistent.tools.LookTool
+                        ?: error("look tool not registered")
+                    val result = tool.execute(if (question.isBlank()) buildJsonObject {} else buildJsonObject { put("question", question) })
+                    call.respond(buildJsonObject { put("description", result) })
+                })
                 // Voice games: {"game":"quiz|numero|pedra_papel_tesoura|verdade_ou_mentira","topic":"..."}; scores per person.
                 post("/games/start", guard {
                     val b = AppJson.parseToJsonElement(call.receiveText()) as JsonObject
@@ -640,6 +658,93 @@ class LocalApiServer(private val g: AppGraph) {
                 post("/spotify/signin", guard { call.respond(buildJsonObject { put("status", g.spotify.startSignIn()) }) })
                 post("/spotify/signout", guard { g.spotify.signOut(); call.respond(ok()) })
                 // What the robot is doing right now (tool calls with their real state) and cancel-all ("parar").
+                get("/diary", guard {
+                    val n = call.request.queryParameters["days"]?.toIntOrNull() ?: 7
+                    call.respond(kotlinx.serialization.json.buildJsonArray {
+                        g.diary.recent(n).forEach { e ->
+                            add(buildJsonObject { put("id", e.id); put("date", e.date); put("mood", e.mood); put("text", e.text) })
+                        }
+                    })
+                })
+                post("/diary", guard {
+                    val b = AppJson.parseToJsonElement(call.receiveText()) as JsonObject
+                    val text = (b["text"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: error("missing text")
+                    val date = (b["date"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        ?: java.time.LocalDate.now().toString()
+                    val id = g.db.diary().insert(io.github.assistent.data.DiaryEntity(date = date, text = text))
+                    call.respond(buildJsonObject { put("id", id) })
+                })
+                delete("/diary/{id}", guard {
+                    val id = call.parameters["id"]?.toLongOrNull() ?: error("missing id")
+                    g.diary.delete(id)
+                    call.respond(ok())
+                })
+                get("/dreams", guard {
+                    val files = g.dreamImages.listCached()
+                    call.respond(buildJsonObject {
+                        put("count", files.size)
+                        put("files", kotlinx.serialization.json.buildJsonArray {
+                            files.take(12).forEach { f -> add(kotlinx.serialization.json.JsonPrimitive(f.name)) }
+                        })
+                    })
+                })
+                post("/dream", guard {
+                    val body = AppJson.parseToJsonElement(call.receiveText()) as? JsonObject
+                    val prompt = body?.get("prompt")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+                    require(prompt.isNotBlank()) { "prompt required" }
+                    val available = kotlinx.coroutines.withTimeoutOrNull(30_000) {
+                        g.dreamImages.fetch(prompt)
+                    } != null
+                    if (!available) error("unavailable or dreamImages=off")
+                    call.respond(ok())
+                })
+                get("/brief", guard {
+                    val days = call.request.queryParameters["days"]?.toIntOrNull()?.coerceIn(0, 7) ?: 0
+                    val weather = g.runtime.state.value.ambient.let { a ->
+                        buildString { a.temperature?.let { t -> append("${t.toInt()}°C, ") }; append(a.condition) }.takeIf { it.isNotBlank() }
+                    }
+                    val b = g.dailyBrief.build(days, weather)
+                    call.respond(buildJsonObject {
+                        put("brief", g.dailyBrief.toJson(b))
+                        put("spoken", g.dailyBrief.toSpoken(b))
+                    })
+                })
+                get("/house-mood", guard {
+                    val m = g.houseMood?.mood?.value
+                    call.respond(if (m != null) buildJsonObject {
+                        put("label", m.label); put("valence", m.valence); put("arousal", m.arousal)
+                        put("sinceMinutes", (System.currentTimeMillis() - m.sinceMs) / 60_000)
+                    } else buildJsonObject { put("label", "desconhecido") })
+                })
+                get("/live", guard {
+                    val s = g.live.state.value
+                    call.respond(buildJsonObject { put("state", s.name.lowercase()) })
+                })
+                post("/live", guard {
+                    val body = runCatching { AppJson.parseToJsonElement(call.receive<String>()) as JsonObject }.getOrNull()
+                    val enable = body?.get("enable")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBoolean() }
+                    when {
+                        enable == true -> g.live.start()
+                        enable == false -> g.live.stop("api")
+                        else -> g.live.toggle()
+                    }
+                    call.respond(buildJsonObject { put("state", g.live.state.value.name.lowercase()) })
+                })
+                get("/mcp", guard {
+                    call.respond(buildJsonObject {
+                        put("servers", kotlinx.serialization.json.buildJsonArray {
+                            for (s in g.mcp.status()) add(buildJsonObject {
+                                put("name", s["name"] as String)
+                                put("url", s["url"] as String)
+                                put("enabled", (s["enabled"] as Boolean))
+                                put("connected", (s["connected"] as Boolean))
+                                put("tools", (s["tools"] as Int).toLong())
+                                put("error", s["error"] as String)
+                            })
+                        })
+                    })
+                })
+                post("/mcp/refresh", guard { g.mcp.refresh(); call.respond(buildJsonObject { put("ok", true) }) })
                 get("/operations", guard { call.respond(g.operations.list.value) })
                 post("/operations/cancel", guard { call.respond(buildJsonObject { put("cancelled", g.operations.cancelAll()) }) })
                 // Wake phrase self-test: speaks {"text"} with the system voice (or takes a WAV body) and runs the

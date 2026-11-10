@@ -126,8 +126,12 @@ class WeatherTool(private val http: OkHttpClient, private val config: ConfigStor
     override val activity = Activity.SEARCHING
     override val parameters = params { string("location", "City name, e.g. 'Curitiba'", required = false) }
 
+    private data class CacheEntry(val result: String, val location: String, val at: Long)
+    @Volatile private var cache: CacheEntry? = null
+
     override suspend fun execute(args: JsonObject): String = withContext(Dispatchers.IO) {
         val place = args.str("location")?.takeIf { it.isNotBlank() } ?: config.current.weather.defaultLocation
+        cache?.let { if (it.location == place && System.currentTimeMillis() - it.at < 10 * 60_000L) return@withContext it.result }
         val geoUrl = "https://geocoding-api.open-meteo.com/v1/search".toHttpUrl().newBuilder()
             .addQueryParameter("name", place).addQueryParameter("count", "1").addQueryParameter("language", "pt").build().toString()
         val geo = AppJson.parseToJsonElement(http.getText(geoUrl)).jsonObject["results"]?.jsonArray?.firstOrNull()?.jsonObject
@@ -142,7 +146,7 @@ class WeatherTool(private val http: OkHttpClient, private val config: ConfigStor
         val w = AppJson.parseToJsonElement(http.getText(url)).jsonObject
         val cur = w["current"]!!.jsonObject
         val daily = w["daily"]!!.jsonObject
-        buildString {
+        val result = buildString {
             append("${geo.str("name")}, ${geo.str("admin1").orEmpty()} ${geo.str("country").orEmpty()}\n")
             append("now: ${cur.str("temperature_2m")}°C (feels ${cur.str("apparent_temperature")}°C), ")
             append("${wmo(cur.str("weather_code"))}, humidity ${cur.str("relative_humidity_2m")}%, wind ${cur.str("wind_speed_10m")} km/h\n")
@@ -154,6 +158,8 @@ class WeatherTool(private val http: OkHttpClient, private val config: ConfigStor
                 append("rain ${daily["precipitation_probability_max"]!!.jsonArray[i].jsonPrimitive.content}%\n")
             }
         }
+        cache = CacheEntry(result, place, System.currentTimeMillis())
+        result
     }
 
     private fun wmo(code: String?): String = when (code?.toIntOrNull()) {

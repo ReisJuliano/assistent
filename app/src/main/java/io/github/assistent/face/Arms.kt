@@ -10,6 +10,8 @@ import io.github.assistent.core.Activity
 import io.github.assistent.core.Emotion
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sin
@@ -108,6 +110,11 @@ object Arms {
             Scene.WAKE_GROGGY -> if (t < 1.6f) return ArmPose(Offset(-0.19f + sin(time * 14f) * 0.012f, -0.04f), null) // rubbing an eye
             Scene.WAKE_STARTLED -> if (t in 0.14f..1.5f) return ArmPose(Offset(-0.42f, -0.12f), Offset(0.42f, -0.12f))
             Scene.PEEKABOO -> if (t < 1.2f || t > 4.6f) return ArmPose(Offset(-0.32f, -0.1f), Offset(0.32f, -0.1f))
+            Scene.DREAM_PAINTING -> return ArmPose(
+                null,
+                Offset(0.52f + sin(t * 1.1f) * 0.025f, 0.08f + cos(t * 1.1f) * 0.015f), // right arm painting
+            )
+            Scene.LIVE -> Unit // default arms; attentive rest pose
             else -> Unit
         }
         if (waving) return ArmPose(null, Offset(0.38f + wiggle * 1.5f, -0.08f + abs(wiggle)))

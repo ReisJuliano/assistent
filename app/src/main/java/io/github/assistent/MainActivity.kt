@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
     private fun Root() {
         val state by graph.runtime.state.collectAsState()
         val gaze by graph.runtime.gaze.collectAsState()
+        val faceImagePair by graph.runtime.faceImage.collectAsState()
         val config by graph.config.config.collectAsState()
         val timers by graph.timers.active.collectAsState()
         var showSettings by remember { mutableStateOf(false) }
@@ -176,6 +177,8 @@ class MainActivity : ComponentActivity() {
                 emotionModifier = graph.runtime.emotionEngine?.let { eng ->
                     { Triple(eng.robotCuriosity, eng.robotBoredom, eng.robotAnxiety) }
                 },
+                faceImage = faceImagePair.first,
+                faceImageAlpha = faceImagePair.second,
                 modifier = Modifier.pointerInput(Unit) {
                     // Petting (slow strokes) and tickling (fast scribbles) on the face.
                     var start = 0L

@@ -105,7 +105,7 @@ class ProactiveCache(
             if (place.isNotBlank()) {
                 runCatching { fetchWeatherSummary(place) }.onFailure { Log.w(TAG, "weather summary: ${it.message}") }
             }
-            delay(intervalMs("tempo clima chuva", 30 * 60_000L, 10 * 60_000L))
+            delay(intervalMs("tempo clima chuva", 10 * 60_000L, 3 * 60_000L))
         }
     }
 

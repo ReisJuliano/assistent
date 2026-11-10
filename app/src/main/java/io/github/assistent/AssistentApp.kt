@@ -12,6 +12,7 @@ import io.github.assistent.companion.CompanionTokenManager
 import io.github.assistent.config.ConfigStore
 import io.github.assistent.core.AssistantRuntime
 import io.github.assistent.core.AmbientBuffer
+import io.github.assistent.core.Emotion
 import io.github.assistent.core.EmotionEngine
 import io.github.assistent.core.ProactiveCache
 import io.github.assistent.core.EventDispatcher
@@ -69,6 +70,9 @@ import io.github.assistent.tools.SleepReportTool
 import io.github.assistent.tools.StartQuizTool
 import io.github.assistent.tools.RecordQuizScoreTool
 import io.github.assistent.tools.ToolRegistry
+import io.github.assistent.brain.EmbeddingClient
+import io.github.assistent.core.DailyBrief
+import io.github.assistent.tools.DailyBriefTool
 import io.github.assistent.tools.WeatherTool
 import io.github.assistent.tools.WebSearchTool
 import io.github.assistent.tools.WhatsNextTool
@@ -123,8 +127,13 @@ class AppGraph(context: Context) {
     val voiceIdentity = VoiceIdentityManager(context, config, http, db.speakerProfiles(), db.people())
     val alerts = AlertManager(db.alerts())
     val events = EventDispatcher(config, http, scope)
+    val houseMood = io.github.assistent.core.HouseMood(events)
     val chatgpt = io.github.assistent.brain.ChatGptAuth(context, http, scope)
     val llm = LlmClient(http).also { it.chatgpt = chatgpt }
+    val diary = io.github.assistent.core.DiaryManager(db.diary(), config, llm, calendar, reminders, messages, sleep, alerts, events, scope)
+    val dailyBrief = DailyBrief(calendar, reminders, timers, messages, lists, sleep, alerts)
+    val embeddings = EmbeddingClient(config, http)
+    val dreamImages = io.github.assistent.brain.DreamImageClient(config, http, java.io.File(context.filesDir, "dreams"))
     val phrases = PhrasePool(context.filesDir, config, llm, scope).also { Catchphrases.pool = it }
     val people = People(context, config, http, db.people(), scope).also { p -> scope.launch { p.migratePipeline() } }
     val registerFaceTool = RegisterFaceTool(people)
@@ -184,15 +193,68 @@ class AppGraph(context: Context) {
     val bargeIn = BargeInDetector()
     val wakeWord = WakeWordEngine(context, config, http)
     val runtime = AssistantRuntime(config, brain, speaker, listener, bargeIn, sleep, events, db.people(), scope, tools, http)
+    val mcp = io.github.assistent.tools.McpManager(config, tools, http, scope)
+    val live = io.github.assistent.live.LiveManager(config, brain, tools, runtime, events, http, scope)
     init {
+        mcp.start()
         scope.launch {
             kotlinx.coroutines.delay(1_000)
             deviceTool.discoverNow()
         }
         alerts.runtime = runtime
+        tools.register(io.github.assistent.tools.LookTool(runtime, config, llm))
+        tools.register(io.github.assistent.tools.ReadDiaryTool(diary))
+        tools.register(DailyBriefTool(dailyBrief, runtime))
+
+        // Wire semantic memory embeddings.
+        val embedDao = db.memoryEmbeddings()
+        memory.embeddingDao = embedDao
+        memory.queryEmbedder = { text -> embeddings.embed(listOf(text))?.firstOrNull() }
+        memory.onEmbedQueue = { id, text ->
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val cfg = config.current
+                if (cfg.memory.semantic == "off" || !embeddings.isAvailable()) return@launch
+                val vec = embeddings.embed(listOf(text))?.firstOrNull() ?: return@launch
+                embedDao.insert(io.github.assistent.data.MemoryEmbeddingEntity(
+                    memoryId = id, dim = vec.size, model = embeddings.model(),
+                    vector = EmbeddingClient.toBytes(vec),
+                ))
+            }
+        }
+        // Backfill embeddings for existing memories without vectors.
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (!embeddings.isAvailable()) return@launch
+            val existing = embedDao.all().map { it.memoryId }.toSet()
+            val all = memory.recent(2000)
+            val missing = all.filter { it.id !in existing }
+            for (m in missing) {
+                kotlinx.coroutines.delay(2_000L)
+                val vec = embeddings.embed(listOf(m.content))?.firstOrNull() ?: continue
+                embedDao.insert(io.github.assistent.data.MemoryEmbeddingEntity(
+                    memoryId = m.id, dim = vec.size, model = embeddings.model(),
+                    vector = EmbeddingClient.toBytes(vec),
+                ))
+            }
+        }
+
+        runtime.life.onBriefing = {
+            scope.launch {
+                val weather = runtime.state.value.ambient.let { a ->
+                    buildString { a.temperature?.let { t -> append("${t.toInt()}°C, ") }; append(a.condition) }.takeIf { it.isNotBlank() }
+                }
+                val b = dailyBrief.build(0, weather)
+                val spoken = dailyBrief.toSpoken(b)
+                when (config.current.life.briefing) {
+                    "bubble" -> runtime.showBubble(spoken, speak = false, emotion = Emotion.HAPPY)
+                    else -> runtime.say(spoken, Emotion.HAPPY)
+                }
+            }
+        }
         runtime.emotionEngine = emotionEngine
         runtime.life.emotionEngine = emotionEngine
         runtime.life.ambientBuffer = ambientBuffer
+        runtime.life.houseMood = houseMood
+        runtime.life.diary = diary
         runtime.life.onAmbientComment = { ctx ->
             if (ctx.isNotBlank()) scope.launch {
                 runtime.showBubble("Ouvi uma coisa aí...", speak = true, emotion = io.github.assistent.core.Emotion.THINKING)
@@ -202,6 +264,8 @@ class AppGraph(context: Context) {
         }
         brain.emotionEngine = emotionEngine
         brain.ambientBuffer = ambientBuffer
+        brain.houseMood = houseMood
+        runtime.houseMood = houseMood
         brain.coroutineScope = scope
         proactiveCache.calendarSource = {
             val events = calendar.upcoming(3)
@@ -212,7 +276,29 @@ class AppGraph(context: Context) {
             }
         }
         runtime.neuralBrain = neuralBrain
-        runtime.life.onDreamBubble = { moodHint -> brain.dreamPhrase(moodHint) }
+        runtime.life.onDreamBubble = dreamBubble@{ moodHint ->
+            val raw = brain.dreamPhrase(moodHint) ?: return@dreamBubble null
+            val cfg = config.current.life
+            if (cfg.dreamImages == "off") return@dreamBubble raw
+            // Parse JSON {"phrase":"...", "imagePrompt":"..."}
+            val jsonStart = raw.indexOf('{'); val jsonEnd = raw.lastIndexOf('}')
+            if (jsonStart < 0 || jsonEnd < 0) return@dreamBubble raw
+            val json = runCatching { org.json.JSONObject(raw.substring(jsonStart, jsonEnd + 1)) }.getOrNull()
+                ?: return@dreamBubble raw
+            val phrase = json.optString("phrase", raw)
+            val imagePrompt = json.optString("imagePrompt", "")
+            if (imagePrompt.isNotBlank()) {
+                val blocklist = runCatching { db.people().all().map { it.name } }.getOrElse { emptyList() }
+                val safePrompt = io.github.assistent.brain.DreamImageClient.sanitize(imagePrompt, blocklist)
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val jpeg = runCatching {
+                        kotlinx.coroutines.withTimeoutOrNull(25_000) { dreamImages.fetch(safePrompt) }
+                    }.getOrNull() ?: return@launch
+                    if (jpeg != null) runtime.showFaceImage(jpeg)
+                }
+            }
+            phrase
+        }
         // Save significant ambient phrases to long-term memory for future recall.
         ambientBuffer.onSignificant = { text ->
             scope.launch { memory.add(text, tags = "ambient ouvido", source = "ambient", share = false) }
@@ -307,11 +393,11 @@ class AppGraph(context: Context) {
     val ears = io.github.assistent.voice.SoundEars(context, config, http, scope)
     val interactions = Interactions(context, config, runtime, scope).also { i ->
         i.start()
-        ears.onSound = i::onSound
         ears.start()
         runtime.isMusicPlaying = { i.musicPlaying }
         val previous = greeter.onKnownSeen
         greeter.onKnownSeen = { name -> previous(name); i.onKnownSeen(name) }
+        i.onInteraction = { kind -> if (config.current.life.houseMood) houseMood.onInteraction(kind) }
         i.onSpeechInRoom = {
             scope.launch {
                 val pending = reminders.listPersonTriggered()
@@ -345,6 +431,7 @@ class AppGraph(context: Context) {
         hands.onWave = interactions::onHandWave
         hands.onGesture = interactions::onHandGesture
         ears.onSound = { kind, score ->
+            if (config.current.life.houseMood) houseMood.onSound(kind, score)
             interactions.onSound(kind, score)
             if (kind == "speech") rp.onSpeechHeard()
         }

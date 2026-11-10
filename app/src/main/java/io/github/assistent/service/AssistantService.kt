@@ -125,6 +125,11 @@ class AssistantService : LifecycleService() {
     /** Never returns if wake phrases are disabled or the model is unavailable (manual trigger still works). */
     private suspend fun awaitWakePhrase(): String {
         val runtime = graph.runtime
+        // While Live mode is active, suspend wake-word detection (Gemini handles turn-taking).
+        // The manual trigger still works to end the Live session.
+        if (graph.live.state.value == io.github.assistent.live.LiveState.LIVE) {
+            graph.live.state.first { it != io.github.assistent.live.LiveState.LIVE }
+        }
         if (!graph.config.current.wake.enabled || System.currentTimeMillis() - wakeFailedAt < RETRY_MS) {
             runtime.state.update { it.copy(wakeReady = false) }
             awaitCancellation()
@@ -152,7 +157,10 @@ class AssistantService : LifecycleService() {
             // Sounded like the name but was not: go back to what it was doing.
             onDismiss = { runtime.setActivity(if (wasSleeping) Activity.SLEEPING else Activity.IDLE) },
             onAudio = graph.interactions::onAudioLevel,
-            onPcm = graph.ears::feed,
+            onPcm = { buf, n ->
+                graph.ears.feed(buf, n)
+                graph.live.feedPcm(buf, n)
+            },
             strict = { runtime.state.value.activity == Activity.SLEEPING },
             music = { graph.interactions.musicPlaying },
             onHeardText = { text -> graph.ambientBuffer.add(text) },

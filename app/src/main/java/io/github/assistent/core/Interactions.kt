@@ -33,6 +33,8 @@ class Interactions(
 ) {
     /** Called when speech is heard in the room (not wake phrase). Set by AppGraph to call out for pending reminders. */
     var onSpeechInRoom: (() -> Unit)? = null
+    /** Called on social interactions (pet/wave/giggle/conversation) for HouseMood. */
+    var onInteraction: ((String) -> Unit)? = null
 
     private val cooldowns = HashMap<String, Long>()
 
@@ -165,6 +167,7 @@ class Interactions(
     /** A real wave seen by [io.github.assistent.vision.HandWatcher]: open palm going side to side. */
     fun onHandWave() {
         if (!enabled || !awake) return
+        onInteraction?.invoke("wave")
         // Waves back every time; only a wave-back already on screen isn't restarted.
         if (state.scene != Scene.WAVE_BACK.key) react(Scene.WAVE_BACK, if (state.bubble == null) "wave" else null, WAVE, 200)
     }
@@ -347,6 +350,7 @@ class Interactions(
         if (state.activity == Activity.SLEEPING) runtime.wake(greet = false)
         runtime.life.interruptForInteraction()
         // Everyday affection: it reacts every time (a line too, unless one is already on screen).
+        onInteraction?.invoke("pet")
         react(Scene.PURR, if (state.bubble == null) "pet" else null, PET, 800)
     }
 

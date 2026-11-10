@@ -23,7 +23,10 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -74,6 +77,9 @@ fun RobotFace(
     shiftY: Float = 0f,
     /** Returns (curiosity, boredom, anxiety) 0..1 from EmotionEngine; applied each frame to shape brows/eyelids. */
     emotionModifier: (() -> Triple<Float, Float, Float>)? = null,
+    /** Bitmap shown faded over the face (dream images, vision previews). */
+    faceImage: ImageBitmap? = null,
+    faceImageAlpha: Float = 0f,
 ) {
     val animator = remember { FaceAnimator() }
     val baseColor = remember(face.color) { parseHexColor(face.color) }
@@ -90,6 +96,7 @@ fun RobotFace(
     val faceState = rememberUpdatedState(face)
     val levelState = rememberUpdatedState(audioLevel)
     val emotionModifierState = rememberUpdatedState(emotionModifier)
+    val faceImageState = rememberUpdatedState(faceImage to faceImageAlpha)
     var tick by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(animator) {
@@ -203,6 +210,18 @@ fun RobotFace(
             drawRect(androidx.compose.ui.graphics.lerp(colorState.value, Color.Black, 0.8f), alpha = lit, blendMode = androidx.compose.ui.graphics.BlendMode.SrcAtop)
             drawRect(Color.White, alpha = lit, blendMode = androidx.compose.ui.graphics.BlendMode.DstOver)
             drawContext.canvas.restore()
+        }
+        // Bitmap overlay (dream images, vision previews) — drawn inside head-tilt rotation.
+        val (img, imgAlpha) = faceImageState.value
+        if (img != null && imgAlpha > 0.01f) {
+            val w = size.width; val h = size.height
+            val sz = minOf(w, h) * 0.38f
+            rotate(animator.params.tilt, Offset(w / 2f, h / 2f)) {
+                val left = w / 2f + sz * 0.65f - sz / 2f
+                val top = h / 2f - sz / 2f
+                drawImage(img, dstOffset = IntOffset(left.toInt(), top.toInt()), dstSize = IntSize(sz.toInt(), sz.toInt()), alpha = imgAlpha)
+                drawRect(colorState.value.copy(alpha = imgAlpha * 0.9f), topLeft = Offset(left, top), size = Size(sz, sz), style = Stroke(width = sz * 0.02f))
+            }
         }
     }
 }

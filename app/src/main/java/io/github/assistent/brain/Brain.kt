@@ -48,10 +48,13 @@ class Brain(
     /** Set by AppGraph after construction. */
     var emotionEngine: EmotionEngine? = null
     var ambientBuffer: AmbientBuffer? = null
+    var houseMood: io.github.assistent.core.HouseMood? = null
     /** Set by AppGraph: needed for background history summarization. */
     var coroutineScope: kotlinx.coroutines.CoroutineScope? = null
     /** Set by AssistantRuntime per turn; fired when the first tool call of a round is detected. */
     var onToolCall: (suspend (toolName: String, queryHint: String) -> Unit)? = null
+
+    suspend fun buildLiveSystemPrompt(): String = systemPrompt()
 
     fun clearHistory() = history.clear()
 
@@ -93,15 +96,23 @@ class Brain(
     suspend fun dreamPhrase(moodHint: String): String? {
         val cfg = config.current
         if (cfg.llm.baseUrl.isBlank()) return null
+        val withImage = cfg.life.dreamImages != "off"
         return withTimeoutOrNull(3_000) {
             try {
-                val messages = listOf(
-                    ChatMessage("system", "Você é um robô dormindo. Gere UMA frase de balão de sonho em português (máximo 20 palavras) começando exatamente com 'estou sonhando que' descrevendo um sonho $moodHint e curioso. Só a frase, sem aspas."),
-                    ChatMessage("user", "sonho"),
-                )
-                llm.complete(cfg.llm, messages, emptyList()).content?.trim()
-                    ?.takeIf { it.isNotBlank() && it.length < 120 }
-                    ?.let { if (it.startsWith("estou sonhando", ignoreCase = true)) it else "estou sonhando que $it" }
+                val systemMsg = if (withImage) {
+                    "Você é um robô dormindo. Responda APENAS JSON válido: {\"phrase\":\"estou sonhando que ...\",\"imagePrompt\":\"childlike neon line-art of ..., black background, no text\"} " +
+                        "descrevendo um sonho $moodHint. Frase em português, máximo 20 palavras. imagePrompt em inglês, máximo 15 palavras. Sem outros campos."
+                } else {
+                    "Você é um robô dormindo. Gere UMA frase de balão de sonho em português (máximo 20 palavras) começando exatamente com 'estou sonhando que' descrevendo um sonho $moodHint e curioso. Só a frase, sem aspas."
+                }
+                val messages = listOf(ChatMessage("system", systemMsg), ChatMessage("user", "sonho"))
+                val raw = llm.complete(cfg.llm, messages, emptyList()).content?.trim() ?: return@withTimeoutOrNull null
+                if (!withImage) {
+                    raw.takeIf { it.isNotBlank() && it.length < 120 }
+                        ?.let { if (it.startsWith("estou sonhando", ignoreCase = true)) it else "estou sonhando que $it" }
+                } else {
+                    raw // caller parses JSON
+                }
             } catch (_: Exception) { null }
         }
     }
@@ -223,7 +234,10 @@ class Brain(
         val rawContent = final?.content.orEmpty()
         val userEmotionMatch = USER_EMOTION_RE.find(rawContent)
         val rawForParsing = if (userEmotionMatch != null) rawContent.replace(USER_EMOTION_RE, "") else rawContent
-        userEmotionMatch?.groupValues?.get(1)?.let { emotionEngine?.onUserEmotionTag(it) }
+        userEmotionMatch?.groupValues?.get(1)?.let { tag ->
+            emotionEngine?.onUserEmotionTag(tag)
+            houseMood?.onUserEmotionTag(tag)
+        }
         val (emotion, parsedText) = parseEmotion(rawForParsing)
         val tl = userText.lowercase()
         val cancelIntent = tl.contains("cancel") || tl.contains("apaga") || tl.contains("remove") ||
@@ -329,6 +343,9 @@ class Brain(
                     val owner = if (person != null && it.personId == person.id) "${person.name}: " else ""
                     appendLine("- $owner${it.content}")
                 }
+            }
+            houseMood?.mood?.value?.let { m ->
+                appendLine("Clima atual da casa: ${m.label} (desde ${(System.currentTimeMillis() - m.sinceMs) / 60_000} min atrás). Adapte a conversa ao ambiente — se tenso, seja mais acolhedor; se tensa/triste, não faça piadas.")
             }
             if (p.extraInstructions.isNotBlank()) appendLine(p.extraInstructions)
             ambientBuffer?.contextSnippet()?.let { ctx ->

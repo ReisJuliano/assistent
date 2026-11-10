@@ -282,7 +282,7 @@ class Mesh(
         /** Settings that are the same on every device: everything except this device's identity, API and mesh. */
         fun shared(cfg: AppConfig): JsonObject {
             val all = AppJson.encodeToJsonElement(cfg).jsonObject
-            return JsonObject(all - setOf("device", "mesh", "api"))
+            return JsonObject(all - setOf("device", "mesh", "api", "google"))
         }
     }
 }

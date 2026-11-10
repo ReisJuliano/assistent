@@ -13,6 +13,28 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 
+/** Robot's nightly diary entry about the day. */
+@Serializable
+@Entity(tableName = "diary")
+data class DiaryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** ISO local date yyyy-MM-dd. */
+    val date: String,
+    val personId: Long? = null,
+    val text: String,
+    val mood: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+@Dao
+interface DiaryDao {
+    @Insert suspend fun insert(e: DiaryEntity): Long
+    @Update suspend fun update(e: DiaryEntity)
+    @Query("SELECT * FROM diary WHERE date = :date LIMIT 1") suspend fun get(date: String): DiaryEntity?
+    @Query("SELECT * FROM diary ORDER BY date DESC LIMIT :n") suspend fun recent(n: Int): List<DiaryEntity>
+    @Query("DELETE FROM diary WHERE id = :id") suspend fun delete(id: Long)
+}
+
 /** Long-term facts the assistant keeps about the user and the house. */
 @Serializable
 @Entity(tableName = "memories")
@@ -325,13 +347,32 @@ interface AlertDao {
     @Query("SELECT * FROM alerts ORDER BY createdAt DESC LIMIT :limit") suspend fun recent(limit: Int): List<AlertEntity>
 }
 
+@Entity(tableName = "memory_embeddings")
+data class MemoryEmbeddingEntity(
+    @PrimaryKey val memoryId: Long,
+    val dim: Int,
+    val model: String,
+    /** FloatArray serialized as little-endian bytes. */
+    val vector: ByteArray,
+)
+
+@Dao
+interface MemoryEmbeddingDao {
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE) suspend fun insert(e: MemoryEmbeddingEntity)
+    @Query("SELECT * FROM memory_embeddings WHERE memoryId = :id") suspend fun get(id: Long): MemoryEmbeddingEntity?
+    @Query("SELECT * FROM memory_embeddings") suspend fun all(): List<MemoryEmbeddingEntity>
+    @Query("DELETE FROM memory_embeddings WHERE memoryId = :id") suspend fun delete(id: Long)
+    @Query("DELETE FROM memory_embeddings WHERE model != :model") suspend fun deleteAll(model: String)
+    @Query("SELECT COUNT(*) FROM memory_embeddings") suspend fun count(): Int
+}
+
 @Database(
     entities = [
         MemoryEntity::class, ReminderEntity::class, PersonEntity::class, TimerEntity::class, EventEntity::class, MessageEntity::class,
         ListEntity::class, ListItemEntity::class, SleepEntity::class, QuizScoreEntity::class, CompanionTokenEntity::class,
-        SpeakerProfileEntity::class, AlertEntity::class,
+        SpeakerProfileEntity::class, AlertEntity::class, DiaryEntity::class, MemoryEmbeddingEntity::class,
     ],
-    version = 12,
+    version = 14,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -347,6 +388,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun companionTokens(): CompanionTokenDao
     abstract fun speakerProfiles(): SpeakerProfileDao
     abstract fun alerts(): AlertDao
+    abstract fun diary(): DiaryDao
+    abstract fun memoryEmbeddings(): MemoryEmbeddingDao
 
     companion object {
         private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -443,11 +486,30 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `diary` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`date` TEXT NOT NULL, `personId` INTEGER, `text` TEXT NOT NULL, " +
+                        "`mood` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL)",
+                )
+            }
+        }
+
+        private val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `memory_embeddings` (`memoryId` INTEGER NOT NULL PRIMARY KEY, " +
+                        "`dim` INTEGER NOT NULL, `model` TEXT NOT NULL, `vector` BLOB NOT NULL)",
+                )
+            }
+        }
+
         fun create(context: Context) =
             Room.databaseBuilder(context, AppDatabase::class.java, "assistent.db")
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
-                    MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
+                    MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
                 ).build()
     }
 }
@@ -457,10 +519,19 @@ class MemoryRepository(private val dao: MemoryDao, private val people: PersonDao
     /** Called for every new memory meant to be shared (other devices of the mesh). */
     var onAdded: (MemoryEntity) -> Unit = {}
 
+    /** Called after insert to enqueue embedding generation (set by AppGraph). */
+    var onEmbedQueue: ((Long, String) -> Unit)? = null
+
+    /** Set by AppGraph to enable hybrid search. */
+    var embeddingDao: MemoryEmbeddingDao? = null
+    /** Set by AppGraph: computes a query vector from text. Returns null when unavailable. */
+    var queryEmbedder: (suspend (String) -> FloatArray?)? = null
+
     suspend fun add(content: String, tags: String = "", source: String = "assistant", personId: Long? = null, share: Boolean = true): Long {
         val m = MemoryEntity(content = content.trim(), tags = tags.trim(), source = source, personId = personId)
         val id = dao.insert(m)
         if (share) onAdded(m.copy(id = id))
+        onEmbedQueue?.invoke(id, m.content)
         return id
     }
 
@@ -475,7 +546,11 @@ class MemoryRepository(private val dao: MemoryDao, private val people: PersonDao
     suspend fun clear() = dao.clear()
     suspend fun personIdByName(name: String): Long? = people.byName(name.trim())?.id
 
-    suspend fun search(query: String, limit: Int = 10, personId: Long? = null): List<MemoryEntity> {
+    suspend fun search(query: String, limit: Int = 10, personId: Long? = null, semantic: Boolean = true): List<MemoryEntity> {
+        if (semantic && embeddingDao != null && queryEmbedder != null) {
+            val vec = queryEmbedder?.invoke(query)
+            if (vec != null) return searchHybrid(query, limit, personId, embeddingDao, vec)
+        }
         val raw = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 2 }.distinct()
         val terms = raw.map(::normalize).distinct()
         if (terms.isEmpty()) return if (personId == null) dao.recent(limit) else recentForPrompt(personId, limit)
@@ -487,6 +562,37 @@ class MemoryRepository(private val dao: MemoryDao, private val people: PersonDao
             .sortedWith(compareByDescending<Pair<MemoryEntity, Int>> { it.second }.thenByDescending { it.first.createdAt })
             .take(limit)
             .map { it.first }
+    }
+
+    /** Hybrid search: interleaves keyword results with vector-cosine results when embeddings are available. */
+    suspend fun searchHybrid(
+        query: String,
+        limit: Int = 10,
+        personId: Long? = null,
+        embeddingDao: MemoryEmbeddingDao? = null,
+        queryVec: FloatArray? = null,
+    ): List<MemoryEntity> {
+        val keyword = search(query, limit, personId)
+        if (embeddingDao == null || queryVec == null) return keyword
+        val allEmbeds = embeddingDao.all()
+        if (allEmbeds.isEmpty()) return keyword
+        val dim = queryVec.size
+        val scored = allEmbeds
+            .filter { it.dim == dim }
+            .map { e -> e.memoryId to io.github.assistent.brain.EmbeddingClient.cosine(queryVec, io.github.assistent.brain.EmbeddingClient.fromBytes(e.vector)) }
+            .sortedByDescending { it.second }
+            .take(limit)
+        val vecIds = scored.map { it.first }.toSet()
+        val vecEntities = vecIds.mapNotNull { id -> dao.get(id) }
+        // Interleave by rank
+        val keywordIds = keyword.map { it.id }.toSet()
+        val merged = mutableListOf<MemoryEntity>()
+        val ki = keyword.iterator(); val vi = vecEntities.iterator()
+        while (merged.size < limit && (ki.hasNext() || vi.hasNext())) {
+            if (ki.hasNext()) { val m = ki.next(); if (m.id !in vecIds || merged.size % 2 == 0) merged += m }
+            if (merged.size < limit && vi.hasNext()) { val m = vi.next(); if (m.id !in keywordIds) merged += m }
+        }
+        return merged.distinctBy { it.id }.take(limit)
     }
 
     private fun normalize(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)

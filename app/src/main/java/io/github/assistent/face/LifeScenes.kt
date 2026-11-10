@@ -63,6 +63,7 @@ enum class Scene(val key: String, val seconds: Float, val kind: Kind, val label:
     DREAM_FOOD("dream_food", 16f, Kind.DREAM, "Sonhando com pizza"),
     DREAM_SHEEP("dream_sheep", 18f, Kind.DREAM, "Contando carneirinhos"),
     DREAM_GAME("dream_game", 16f, Kind.DREAM, "Sonhando que joga"),
+    DREAM_PAINTING("dream_painting", 20f, Kind.DREAM, "Sonho pintado"),
     SLEEP_PEEK("sleep_peek", 4f, Kind.DREAM, "Espia e volta a dormir"),
     WAKE_STARTLED("wake_startled", 2.8f, Kind.WAKE, "Acorda assustado"),
     DANCE("dance", 22f, Kind.REACT, "Dançando"),
@@ -87,7 +88,8 @@ enum class Scene(val key: String, val seconds: Float, val kind: Kind, val label:
     EAT_FOOD("eat_food", 6f, Kind.REACT, "Comer"),
     STRETCH_BREAK("stretch_break", 6f, Kind.REACT, "Alongar"),
     CAT_CUDDLE("cat_cuddle", 6.5f, Kind.REACT, "Gatinho no colo"),
-    DOG_PAT("dog_pat", 6f, Kind.REACT, "Carinho no cachorro");
+    DOG_PAT("dog_pat", 6f, Kind.REACT, "Carinho no cachorro"),
+    LIVE("live", 3600f, Kind.AWAKE, "Modo ao vivo");
 
     /** AWAKE: hobbies while idle. DREAM: while sleeping. WAKE: right after waking. REACT: answer to something a person did. */
     enum class Kind { AWAKE, DREAM, WAKE, REACT }
@@ -548,6 +550,10 @@ object Life {
             )
             Scene.DREAM_SHEEP -> SceneFrame(sleeping.copy(mouthCurve = 0.35f, mouthWidth = 0.35f))
             Scene.DREAM_GAME -> SceneFrame(sleeping.copy(mouthCurve = 0.5f, mouthWidth = 0.4f, browAngle = 6f, tongue = 0.6f))
+            Scene.DREAM_PAINTING -> SceneFrame(
+                sleeping.copy(mouthCurve = 0.5f, mouthWidth = 0.38f, mouthOpen = 0.04f, browRaise = 0.1f, browCurve = 0.2f),
+                dy = -abs(sin(t * 0.4f)) * 0.008f,
+            )
 
             Scene.SLEEP_PEEK -> {
                 val open = when {
@@ -610,6 +616,17 @@ object Life {
                 t < 2.4f -> SceneFrame(neutral.eyes(EyeShape(height = 0.3f, radiusTop = 0.6f, radiusBottom = 0.6f)).copy(mouthOpen = 1.1f, mouthWidth = 0.45f, mouthCurve = 0f, browRaise = 0.3f, tilt = -5f))
                 else -> SceneFrame(neutral.eyes(EyeShape(height = 0.85f)).copy(mouthCurve = 0.1f))
             }
+
+            // Live mode: slightly wider eyes with a subtle pulse; looks attentive and engaged.
+            Scene.LIVE -> SceneFrame(
+                happy.eyes(EyeShape(height = 1.15f, radiusTop = 0.7f, radiusBottom = 0.8f)).copy(
+                    pupil = 0.6f + sin(t * 2.5f) * 0.1f,
+                    browRaise = 0.1f + sin(t * 1.3f) * 0.05f,
+                    mouthCurve = 0.3f,
+                ),
+                gaze = Offset(sin(t * 0.7f) * 0.1f, -0.05f),
+                dy = -0.01f,
+            )
         }
     }
 
@@ -722,6 +739,16 @@ internal fun DrawScope.drawSceneProps(
         Scene.DREAM_FOOD -> pizza(dreamCloud(g, t, sceneSeconds, ::stroke), u * 0.09f, t, ::stroke, ::fill)
 
         Scene.DREAM_SHEEP -> sheep(dreamCloud(g, t, sceneSeconds, ::stroke), u, t, ::stroke, ::fill)
+
+        Scene.DREAM_PAINTING -> {
+            // Easel frame to the right of the face — the actual bitmap is drawn in RobotFace on top.
+            val ex = g.cx + g.sep * 2.1f; val ey = g.eyesY - g.eh * 0.3f; val fw = u * 0.22f; val fh = u * 0.26f
+            stroke(Path().apply { addRect(Rect(ex - fw / 2f, ey - fh / 2f, ex + fw / 2f, ey + fh / 2f)) }, u * 0.015f)
+            // Easel legs
+            val alpha = 0.55f
+            stroke(Path().apply { moveTo(ex - fw / 2f, ey + fh / 2f); lineTo(ex - fw * 0.3f, ey + fh) }, u * 0.012f, alpha)
+            stroke(Path().apply { moveTo(ex + fw / 2f, ey + fh / 2f); lineTo(ex + fw * 0.3f, ey + fh) }, u * 0.012f, alpha)
+        }
 
         Scene.WAKE_STARTLED -> {
             if (t in 0.14f..1.5f) exclamation(Offset(g.cx + g.sep * 1.6f, g.eyesY - g.eh * 1.2f), u, t - 0.14f, ::stroke, ::fill)
@@ -953,7 +980,7 @@ internal fun DrawScope.drawSceneProps(
 
 
         Scene.HEARD, Scene.WAVE_BACK, Scene.SHY, Scene.TOO_CLOSE, Scene.FOUND_YOU, Scene.HEAD_SHAKE, Scene.HEAD_NOD,
-        Scene.SLEEP_PEEK, Scene.YAWN, Scene.BORED, Scene.WAKE_GROGGY, Scene.PEEKABOO, Scene.STRETCH -> Unit
+        Scene.SLEEP_PEEK, Scene.YAWN, Scene.BORED, Scene.WAKE_GROGGY, Scene.PEEKABOO, Scene.STRETCH, Scene.LIVE -> Unit
     }
 }
 
